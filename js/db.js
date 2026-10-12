@@ -59,17 +59,41 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true };
-  const [profiles, categories, habits, logs, pauses, extra, strength] = await Promise.all([
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true };
+  const [profiles, categories, habits, logs, pauses, extra, strength, body] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
     fetchAll('habits', 'sort_order'),
     fetchAll('habit_logs', 'day'),
     fetchAll('pauses', 'start_day'),
     loadWithingsData(),
-    loadStrengthData()
+    loadStrengthData(),
+    loadBodyData()
   ]);
-  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength };
+  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body };
+}
+
+// Körperwerte (Renpho). Fehlt das Datenbank-Update 005 noch, läuft die App ohne weiter.
+export async function loadBodyData() {
+  if (isDemo) return { body: structuredClone(demo.body), hasBodySchema: true };
+  try {
+    return { body: await fetchAll('body_measurements', 'day'), hasBodySchema: true };
+  } catch (err) {
+    console.warn('Körperwerte nicht verfügbar (Datenbank-Update 005 schon ausgeführt?)', err);
+    return { body: [], hasBodySchema: false };
+  }
+}
+
+export async function importBody(measurements) {
+  if (isDemo) return measurements.map((m) => ({ ...m, id: demoId() }));
+  const saved = [];
+  for (let i = 0; i < measurements.length; i += 200) {
+    const rows = check(await client.from('body_measurements')
+      .upsert(measurements.slice(i, i + 200), { onConflict: 'user_id,ext_id', ignoreDuplicates: true })
+      .select());
+    saved.push(...rows);
+  }
+  return saved;
 }
 
 // Krafttraining (Alpha Progression). Fehlt das Datenbank-Update 004 noch, läuft die App ohne weiter.
@@ -324,8 +348,20 @@ const demo = (() => {
   }
   for (const k of [40, 44, 47]) unit('a' + k, new Date(addDays(t, -k) + 'T18:00:00').toISOString(), 48, k);
   const plans = [{ id: 'plan-curls', exercise: 'Curls', equipment: 'Kurzhanteln', sets: 3, start_reps: 20, kg: 7, plus_reps: 2, every_weeks: 2, max_reps: 40, kg_step: 2, started_on: weekStart(addDays(t, -7)) }];
+  // Körperwerte: alle 3–4 Tage eine Messung, leicht schwankend mit sanftem Trend
+  const body = [];
+  for (let i = 180; i >= 1; i -= 3 + Math.round(rnd())) {
+    const d = addDays(t, -i);
+    const trend = (180 - i) / 180;
+    const w = Math.round((77.5 + trend * 3.5 + (rnd() - 0.5) * 1.6) * 100) / 100;
+    const fat = Math.round((25.4 + trend * 1.6 + (rnd() - 0.5) * 0.8) * 10) / 10;
+    const muscle = Math.round((54.8 + trend * 1.8 + (rnd() - 0.5) * 0.5) * 100) / 100;
+    body.push({ id: 'b' + i, ext_id: 'renpho:' + d, source: 'renpho', day: d, measured_at: new Date(d + 'T07:05:00').toISOString(), weight: w,
+      vals: { weight: w, bmi: Math.round((w / 1.75 / 1.75) * 10) / 10, fat_pct: fat, fat_kg: Math.round(w * fat) / 100, muscle_kg: muscle, muscle_pct: Math.round((muscle / w) * 1000) / 10, skeletal_kg: Math.round(muscle * 0.68 * 100) / 100, lean_kg: Math.round((w - (w * fat) / 100) * 100) / 100, subcut_pct: Math.round((fat - 3.2) * 10) / 10, visceral: fat > 26.5 ? 10 : 9, bmr: Math.round(1600 + muscle * 0.9 - 50), body_age: 37, water_pct: 53.2 } });
+  }
   return {
-    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha'], tiles: ['steps', 'training'] },
+    body,
+    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
     activity, workouts, dismissals: [], strength, plans,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }

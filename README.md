@@ -14,7 +14,7 @@ Live: https://schrontz.github.io/motivapp/ · Demo ohne Login: https://schrontz.
 ## Datenbank-Updates
 
 Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede einmal, Wiederholen schadet nicht):
-`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql`
+`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql`
 
 ## Withings verbinden (einmalig)
 
@@ -30,6 +30,10 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 
 *Profil → Alpha Progression* einschalten. Import: in Alpha Progression *Daten exportieren (CSV)* → *Teilen → Motivator* (geht, wenn die App installiert ist) oder in der App *Training → Alpha importieren → CSV-Datei auswählen*. Immer die ganze CSV schicken – Bekanntes wird übersprungen. Einheiten werden über die Startzeit (±20 Min.) mit Withings-Trainings zusammengeführt.
 
+## Körperwerte / Renpho (optional, pro Person)
+
+*Profil → Körperwerte (Renpho)* einschalten. Import: in Renpho *Waage → Verlauf → Daten exportieren* (Zeitraum „alles“) → *Teilen → Motivator* oder *Körper → Renpho importieren*. Pro Tag wird eine Messung gespeichert (die erste vollständige), mit allen Spalten.
+
 ## Aufbau
 
 | Datei | Inhalt |
@@ -39,6 +43,7 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 | `js/views.js` | Alle Bildschirme |
 | `js/stats.js` | Quoten, Ringe, Statistik – reine Funktionen, getestet |
 | `js/auto.js` | Withings: Trainingsarten, Auto-Abhaken, Kacheln – getestet |
+| `js/body.js` | Renpho-CSV, Verlauf mit 2-Wochen-Schnitt – getestet |
 | `js/strength.js` | Alpha-CSV, Zusammenführen, Steigerung, 1RM – getestet |
 | `supabase/functions/withings/` | Server-Funktion für die Withings-API |
 | `js/dates.js` | Datums-Hilfen |

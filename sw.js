@@ -1,10 +1,10 @@
 // Service Worker: App funktioniert auch bei wackeligem Netz.
 // Strategie: erst Netz (damit Updates sofort ankommen), bei Fehler der letzte Stand aus dem Cache.
-const CACHE = 'motivator-v12';
+const CACHE = 'motivator-v13';
 const SHARE = 'motivator-share'; // geteilte Dateien, bis die App sie abholt
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
-  './js/app.js', './js/views.js', './js/stats.js', './js/dates.js', './js/db.js', './js/icons.js', './js/config.js', './js/auto.js', './js/strength.js',
+  './js/app.js', './js/views.js', './js/stats.js', './js/dates.js', './js/db.js', './js/icons.js', './js/config.js', './js/auto.js', './js/strength.js', './js/body.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 

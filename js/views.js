@@ -6,6 +6,7 @@ import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, pa
 import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint, isoWeek } from './stats.js';
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
+import { FIELDS, series, change, latest } from './body.js';
 import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview } from './strength.js';
 
 // Alpha Progression eingeschaltet (und Datenbank-Update 004 da)?
@@ -40,25 +41,38 @@ function timeOf(iso) {
 
 function tilesSection(S, T) {
   const show = (S.profile && S.profile.tiles) || ['steps', 'training'];
-  if (!(S.withings && S.withings.connected) && !S.activity.length) return '';
-  if (!show.length) return '';
+  const withings = (S.withings && S.withings.connected) || S.activity.length;
   const v = tileValues({ activity: S.activity, workouts: trainings(S), today: T });
-  const defs = {
-    steps: { label: 'Schritte', icon: HABIT_ICONS.steps.path, color: 'teal', value: v.steps.value != null ? fmt(v.steps.value) : '–', sub: v.steps.avg7 != null ? `heute · Ø 7 Tage ${fmt(v.steps.avg7)}` : 'heute' },
-    training: { label: 'Training', icon: HABIT_ICONS.dumbbell.path, color: 'blue', value: `${v.training.count}×`, sub: `letzte 7 Tage${v.training.minutes ? ' · ' + hm(v.training.minutes) : ''}` },
-    active: { label: 'Aktive Minuten', icon: HABIT_ICONS.run.path, color: 'orange', value: v.active.value != null ? `${v.active.value} min` : '–', sub: 'heute · mittel + intensiv' },
-    distance: { label: 'Strecke', icon: HABIT_ICONS.run.path, color: 'purple', value: v.distance.value != null ? `${fmt(v.distance.value)} km` : '–', sub: 'heute' }
-  };
-  const links = { steps: '#/steps', training: '#/training', active: '#/steps', distance: '#/steps' };
+  const defs = {};
+  if (withings) {
+    defs.steps = { label: 'Schritte', color: 'teal', value: v.steps.value != null ? fmt(v.steps.value) : '–', sub: v.steps.avg7 != null ? `Ø 7 T. ${fmt(v.steps.avg7)}` : 'heute', href: '#/steps' };
+    defs.training = { label: 'Training', color: 'blue', value: `${v.training.count}×`, sub: `7 Tage${v.training.minutes ? ' · ' + hm(v.training.minutes).replace(' min', '′') : ''}`, href: '#/training' };
+    defs.active = { label: 'Aktiv', color: 'orange', value: v.active.value != null ? `${v.active.value} min` : '–', sub: 'heute', href: '#/steps' };
+    defs.distance = { label: 'Strecke', color: 'pink', value: v.distance.value != null ? `${fmt(v.distance.value)} km` : '–', sub: 'heute', href: '#/steps' };
+  }
+  if (bodyOn(S)) {
+    const w = latest(S.body || [], 'weight', T);
+    const pts = series(S.body || [], 'weight', dayShift(T, -90));
+    let spark = '';
+    if (pts.length >= 2) {
+      const vals = pts.map((p) => p.avg);
+      const lo = Math.min(...vals); const hi = Math.max(...vals) || lo + 1;
+      const t0 = parseDay(dayShift(T, -90)).getTime(); const t1 = parseDay(T).getTime();
+      spark = `<svg viewBox="0 0 90 18" style="width: 100%; height: 18px; display: block; margin-top: 2px" aria-hidden="true"><polyline fill="none" style="stroke: var(--c-purple)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${pts.map((p) => `${(2 + ((parseDay(p.day).getTime() - t0) / (t1 - t0)) * 86).toFixed(1)},${(2 + (1 - (p.avg - lo) / Math.max(0.1, hi - lo)) * 14).toFixed(1)}`).join(' ')}"></polyline></svg>`;
+    }
+    defs.body = { label: 'Körper', color: 'purple', value: w ? `${numTxt(w.avg2w ?? w.v, 1)} kg` : '–', sub: w ? (w.avg2w != null ? 'Ø 2 Wochen' : 'zuletzt') : 'noch leer', href: '#/body', spark };
+  }
   const tiles = show.filter((k) => defs[k]).map((k) => {
     const d = defs[k];
-    return `<a class="card tile" href="${links[k]}" aria-label="${d.label}: ${esc(d.value)}, Details ansehen">
-      <div class="tile-head" style="color: var(--c-${d.color})">${svg(d.icon, 18)}<span>${d.label}</span></div>
+    return `<a class="card tile" href="${d.href}" aria-label="${d.label}: ${esc(d.value)}, Verlauf ansehen">
+      <div class="tile-head" style="color: var(--c-${d.color})">${d.label}</div>
       <div class="tile-val">${d.value}</div>
-      <div class="small muted">${d.sub}</div>
+      ${d.spark || `<div class="small muted">${d.sub}</div>`}
     </a>`;
-  }).join('');
-  return `<section class="tiles" aria-label="Kennzahlen">${tiles}</section>`;
+  });
+  if (!tiles.length) return '';
+  return `<div class="section-head"><h2>Deine Werte</h2><span class="small muted">antippen für Verlauf</span></div>
+    <section class="tiles" aria-label="Kennzahlen">${tiles.join('')}</section>`;
 }
 
 export function esc(v) {
@@ -210,14 +224,14 @@ export function overview(S, T) {
     ${chips}
     <div class="wrap">
       ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30))}
-      ${tilesSection(S, T)}
+      <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
+      ${list}
+      ${hints}
       <section class="total">
         <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
         <div><div class="big">${fmt(total)} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
       </section>
-      <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
-      ${list}
-      ${hints}
+      ${tilesSection(S, T)}
     </div>
     ${nav('overview')}
     ${S.sheet ? sheet(S, T) : ''}
@@ -761,6 +775,149 @@ export function importView(S) {
   </div>`;
 }
 
+// ───────────── Körperwerte ─────────────
+
+export function bodyOn(S) {
+  return !!(S.hasBodySchema && S.profile && (S.profile.modules || []).includes('body'));
+}
+
+const BODY_RANGES = [['3m', '3 Monate', 91], ['1y', '1 Jahr', 365], ['all', 'Alles', null]];
+
+function numTxt(n, digits) {
+  if (n == null) return '–';
+  return Number(n).toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function bodyChart(points, f, fromDay, T) {
+  if (points.length < 2) return '<p class="hint" style="margin-top: 8px">Noch zu wenige Messungen für einen Verlauf.</p>';
+  const W = 300; const Hc = 110;
+  const vals = points.map((p) => p.v);
+  const lo0 = Math.min(...vals); const hi0 = Math.max(...vals);
+  const pad = (hi0 - lo0) * 0.08 || 0.5;
+  const lo = lo0 - pad; const hi = hi0 + pad;
+  const t = (d) => parseDay(d).getTime();
+  const t0 = t(fromDay || points[0].day); const t1 = t(T);
+  const x = (d) => 4 + ((t(d) - t0) / Math.max(1, t1 - t0)) * (W - 8);
+  const y = (v) => 10 + (1 - (v - lo) / (hi - lo)) * (Hc - 20);
+  const col = `var(--c-${f.color || 'blue'})`;
+  const date = (d) => `${parseDay(d).getDate()}. ${monthShort(d.slice(0, 7))}${d.slice(0, 4) !== T.slice(0, 4) ? ' ' + d.slice(0, 4) : ''}`;
+  return `<div class="hr-chart" style="grid-template-columns: 38px minmax(0, 1fr); margin-top: 10px">
+      <div class="hr-y small muted" style="height: ${Hc}px" aria-hidden="true"><span style="top: ${((y(hi0) / Hc) * 100).toFixed(1)}%">${numTxt(hi0, f.digits)}</span><span style="top: ${((y(lo0) / Hc) * 100).toFixed(1)}%">${numTxt(lo0, f.digits)}</span></div>
+      <svg viewBox="0 0 ${W} ${Hc}" style="height: ${Hc}px" role="img" aria-label="${esc(f.label)} zwischen ${numTxt(lo0, f.digits)} und ${numTxt(hi0, f.digits)} ${f.unit}; zuletzt ${numTxt(vals[vals.length - 1], f.digits)}">
+        <line x1="0" x2="${W}" y1="${y(hi0).toFixed(1)}" y2="${y(hi0).toFixed(1)}" style="stroke: var(--border)" stroke-dasharray="3 4"></line>
+        <line x1="0" x2="${W}" y1="${y(lo0).toFixed(1)}" y2="${y(lo0).toFixed(1)}" style="stroke: var(--border)" stroke-dasharray="3 4"></line>
+        ${points.map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2.5" style="fill: ${col}" opacity="0.3"></circle>`).join('')}
+        <polyline fill="none" style="stroke: ${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${points.map((p) => `${x(p.day).toFixed(1)},${y(p.avg).toFixed(1)}`).join(' ')}"></polyline>
+      </svg>
+    </div>
+    <div class="small muted" style="display: flex; justify-content: space-between; padding-left: 44px; margin-top: 2px"><span>${date(fromDay || points[0].day)}</span><span>heute</span></div>`;
+}
+
+function changeTxt(points, f) {
+  const c = change(points);
+  if (c == null) return '';
+  const sign = c > 0 ? '+' : (c < 0 ? '−' : '±');
+  const d = points[0].day;
+  return `${sign}${numTxt(Math.abs(c), f.digits)}${f.unit ? ' ' + f.unit : ''}<br>im Schnitt seit ${parseDay(d).getDate()}. ${monthShort(d.slice(0, 7))}`;
+}
+
+export function bodyView(S, T) {
+  const list = S.body || [];
+  const range = BODY_RANGES.find((r) => r[0] === S.bodyRange) || BODY_RANGES[0];
+  const fromDay = range[2] ? dayShift(T, -(range[2] - 1)) : (list[0] ? list[0].day : T);
+  const seg = BODY_RANGES.map(([id, label]) => `<label><input type="radio" name="brange" value="${id}"${range[0] === id ? ' checked' : ''} data-action="body-range"><span>${label}</span></label>`).join('');
+  const lastOf = (key) => { const s = series(list, key); return s.length ? s[s.length - 1] : null; };
+  const main = FIELDS.filter((f) => f.show === 'main').map((f) => {
+    const pts = series(list, f.key, fromDay);
+    const last = lastOf(f.key);
+    return `<section class="card pad">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px">
+        <div><div class="small muted" style="font-weight: 600">${f.label}</div><div style="font-size: 28px; font-weight: 700; line-height: 1.15">${last ? numTxt(last.v, f.digits) + (f.unit ? ' ' + f.unit : '') : '–'}</div></div>
+        <div class="small muted" style="text-align: right; line-height: 1.4">${changeTxt(pts, f)}</div>
+      </div>
+      ${bodyChart(pts, f, range[2] ? fromDay : null, T)}
+    </section>`;
+  }).join('');
+  const open = S.bodyOpen || new Set();
+  const more = FIELDS.filter((f) => f.show === 'more' && lastOf(f.key)).map((f) => {
+    const pts = series(list, f.key, fromDay);
+    const last = lastOf(f.key);
+    const c = change(pts);
+    const isOpen = open.has(f.key);
+    return `<div class="more-row">
+      <button type="button" class="more-btn" data-action="body-more" data-id="${f.key}" aria-expanded="${isOpen}">
+        <span>${f.label}</span>
+        <span><b>${numTxt(last.v, f.digits)}${f.unit ? ' ' + f.unit : ''}</b> <span class="small muted">${c == null ? '' : (c > 0 ? '+' : (c < 0 ? '−' : '±')) + numTxt(Math.abs(c), f.digits)}</span></span>
+      </button>
+      ${isOpen ? `<div style="padding: 0 16px 14px">${bodyChart(pts, { ...f, color: 'purple' }, range[2] ? fromDay : null, T)}</div>` : ''}
+    </div>`;
+  }).join('');
+  const body = list.length
+    ? `<div class="seg" role="radiogroup" aria-label="Zeitraum">${seg}</div>
+      ${main}
+      <p class="hint" style="padding: 0 4px">Punkte = einzelne Messungen, Linie = Schnitt der letzten 2 Wochen. Die Waage schätzt Fett und Muskeln – ein Trend, kein Urteil.</p>
+      ${more ? `<div class="section-head"><h2 style="font-size: 17px">Weitere Werte</h2><span class="small muted">antippen für Verlauf</span></div>
+      <section class="card list">${more}</section>` : ''}`
+    : `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px"><b>Noch keine Messungen</b><p class="hint">Exportiere deine Werte aus Renpho und importiere sie hier.</p><a class="btn" href="#/body-import">Renpho importieren</a></section>`;
+  const first = list[0];
+  return `<div class="app">
+    <div class="bar"><a class="link-btn" href="#/">${svg(UI_ICONS.back, 20, 2.2)}Übersicht</a><a class="link-btn" href="#/body-import">Renpho importieren</a></div>
+    <div class="wrap" style="gap: 14px">
+      <div style="padding: 0 4px"><h1 style="font-size: 28px">Körper</h1>${first ? `<div class="small muted" style="font-size: 14px">${list.length} Messtage seit ${monthShort(first.day.slice(0, 7))} ${first.day.slice(0, 4)} · Renpho</div>` : ''}</div>
+      ${body}
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
+export function bodyImportView(S) {
+  const imp = S.bimp || {};
+  let body;
+  if (imp.busy) {
+    body = `<section class="card pad"><p>${esc(imp.busy)}</p></section>`;
+  } else if (imp.done != null) {
+    body = `<section class="total" style="flex-direction: column; align-items: flex-start; gap: 6px">
+        <div style="font-size: 18px; font-weight: 700">${imp.done} ${imp.done === 1 ? 'Messtag' : 'Messtage'} importiert</div>
+        <div class="small">Alle Spalten sind gespeichert – auch die, die du gerade nicht siehst. Nächstes Mal einfach wieder alles exportieren.</div>
+      </section>
+      <a class="btn" href="#/body">Zu den Körperwerten</a>`;
+  } else if (imp.preview) {
+    const p = imp.preview;
+    const range = p.from ? `${monthShort(p.from.slice(0, 7))} ${p.from.slice(0, 4)} bis ${shortDate(p.to)}${p.to.slice(0, 4) !== String(new Date().getFullYear()) ? ' ' + p.to.slice(0, 4) : ''}` : '';
+    body = `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+        <div class="small muted">${esc(imp.name || 'CSV-Datei')}</div>
+        <div class="grid2" style="gap: 8px">
+          <div class="imp-box" style="background: var(--soft)"><div class="small">Neu</div><b>${p.fresh.length}</b><div class="small">Messtage</div></div>
+          <div class="imp-box" style="background: var(--bg)"><div class="small muted">Schon da</div><b>${p.known}</b><div class="small muted">werden übersprungen</div></div>
+        </div>
+        <div style="font-size: 14px; line-height: 1.5">${range} · ${p.rows} Zeilen.${p.merged ? ' Mehrfach-Messungen am selben Tag werden zu einer zusammengefasst.' : ''}</div>
+        ${p.fresh.length
+          ? `<button type="button" class="btn" data-action="bimport-go">${p.fresh.length} ${p.fresh.length === 1 ? 'Messtag' : 'Messtage'} importieren</button>`
+          : '<p class="hint">Alles schon da – nichts zu tun.</p>'}
+        <button type="button" class="btn ghost" data-action="bimport-reset">Andere Datei</button>
+      </section>`;
+  } else {
+    body = `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+        <b>So geht's</b>
+        <ol style="margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.6">
+          <li>In Renpho: Waage → Verlauf → ganz unten „Daten exportieren“</li>
+          <li>Zeitraum „alles“ → „Teilen“ → <b>Motivator</b></li>
+          <li>Fertig – oder die Datei hier auswählen:</li>
+        </ol>
+        <label class="btn" style="cursor: pointer">CSV-Datei auswählen<input type="file" accept=".csv,text/csv,text/comma-separated-values,text/plain" data-action="bimport-file" style="position: absolute; opacity: 0; width: 1px; height: 1px"></label>
+        ${imp.error ? `<p class="small" style="color: var(--danger)" role="alert">${esc(imp.error)}</p>` : ''}
+      </section>`;
+  }
+  return `<div class="app">
+    ${backBar('#/body', 'Körper')}
+    <div class="wrap" style="gap: 16px">
+      <h1 style="font-size: 26px; padding: 0 4px; line-height: 1.2">Messungen aus Renpho holen</h1>
+      ${S.hasBodySchema ? body : '<section class="card pad"><p class="hint">Bitte zuerst das Datenbank-Update <code>005_koerper.sql</code> im Supabase SQL-Editor ausführen.</p></section>'}
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
 export function stepsView(S, T) {
   const habit = S.habits.find((h) => !h.archived && h.auto_metric === 'steps');
   const goal = habit && habit.target ? habit.target : null;
@@ -999,13 +1156,6 @@ function withingsCard(S) {
   }
   const w = S.withings || {};
   const status = S.syncing ? 'Gleicht gerade ab …' : (w.connected ? `Verbunden · zuletzt abgeglichen ${ago(w.last_sync_at)}` : 'Nicht verbunden');
-  const tiles = new Set((S.profile && S.profile.tiles) || ['steps', 'training']);
-  const tileDefs = [
-    ['steps', 'Schritte', 'heute · Withings'],
-    ['training', 'Training', 'letzte 7 Tage · Withings'],
-    ['active', 'Aktive Minuten', 'heute · Withings'],
-    ['distance', 'Strecke', 'heute · Withings']
-  ];
   return `<section style="display: flex; flex-direction: column; gap: 10px">
     <h2 class="h3">Verbindungen</h2>
     <div class="card pad" style="display: flex; flex-direction: column; gap: 14px">
@@ -1022,14 +1172,42 @@ function withingsCard(S) {
         : `<p class="hint">Schritte und Trainings deiner Uhr kommen dann automatisch in die App. Du meldest dich dafür einmal bei Withings an und tippst auf „Erlauben“.</p>
           <button type="button" class="btn" data-action="withings-connect">Mit Withings verbinden</button>`}
     </div>
-    <h2 class="h3" style="margin-top: 6px">Kacheln auf der Übersicht</h2>
+  </section>`;
+}
+
+function tilesCard(S) {
+  const tiles = new Set((S.profile && S.profile.tiles) || ['steps', 'training']);
+  const defs = [];
+  if (S.hasWithingsSchema && ((S.withings && S.withings.connected) || S.activity.length)) {
+    defs.push(['steps', 'Schritte', 'heute · Withings'], ['training', 'Training', 'letzte 7 Tage · Withings'], ['active', 'Aktive Minuten', 'heute · Withings'], ['distance', 'Strecke', 'heute · Withings']);
+  }
+  if (bodyOn(S)) defs.push(['body', 'Körper', 'Gewicht · Renpho']);
+  if (!defs.length) return '';
+  return `<section style="display: flex; flex-direction: column; gap: 10px">
+    <h2 class="h3">Kacheln auf der Übersicht</h2>
     <div class="card list">
-      ${tileDefs.map(([id, label, src]) => `<div class="cat-row" style="justify-content: space-between">
+      ${defs.map(([id, label, src]) => `<div class="cat-row" style="justify-content: space-between">
         <div><div style="font-size: 16px; font-weight: 600">${label}</div><div class="small muted">${src}</div></div>
         <button type="button" class="switch" role="switch" aria-checked="${tiles.has(id)}" aria-label="${label} anzeigen" data-action="tile-toggle" data-id="${id}"></button>
       </div>`).join('')}
     </div>
   </section>`;
+}
+
+function bodyCard(S) {
+  if (!S.hasBodySchema) {
+    return `<section class="card pad"><b>Körperwerte (Renpho)</b><p class="hint" style="margin-top: 4px">Für den Import bitte zuerst das Datenbank-Update <code>005_koerper.sql</code> im Supabase SQL-Editor ausführen.</p></section>`;
+  }
+  const on = bodyOn(S);
+  const n = (S.body || []).length;
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 14px">
+      <div class="switch-row" style="cursor: default">
+        <div><div style="font-size: 16px; font-weight: 700">Körperwerte (Renpho)</div>
+          <div class="small muted">${on ? (n ? `${n} Messtage · zuletzt ${shortDate(S.body[n - 1].day)}` : 'Noch nichts importiert') : 'Gewicht, Körperfett, Muskeln als Trend'}</div></div>
+        <button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="Körperwerte nutzen" data-action="module-toggle" data-id="body"></button>
+      </div>
+      ${on ? '<a class="btn ghost" href="#/body-import">Renpho importieren</a>' : ''}
+    </section>`;
 }
 
 function alphaCard(S) {
@@ -1090,6 +1268,8 @@ export function profile(S, email) {
       ${installCard(S)}
       ${withingsCard(S)}
       ${alphaCard(S)}
+      ${bodyCard(S)}
+      ${tilesCard(S)}
       <section style="display: flex; flex-direction: column; gap: 10px">
         <h2 class="h3">Deine Daten</h2>
         <button type="button" class="btn ghost" data-action="export">Alle Daten herunterladen</button>

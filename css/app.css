@@ -311,3 +311,14 @@ a.ex-card { display: block; padding: 14px 16px; text-decoration: none; color: in
 .imp-box { border-radius: 14px; padding: 12px; }
 .imp-box b { display: block; font-size: 26px; font-weight: 700; }
 label.btn { position: relative; }
+
+/* ── Kacheln klein (drei pro Reihe) + Körperwerte ── */
+.tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tile { padding: 12px; border-radius: 18px; min-width: 0; }
+.tile .tile-head { font-size: 12px; font-weight: 600; }
+.tile .tile-val { font-size: 20px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .small { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.more-row { border-top: 1px solid var(--border); }
+.more-row:first-child { border-top: 0; }
+.more-btn { width: 100%; min-height: 50px; padding: 0 16px; border: 0; background: transparent; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 15px; text-align: left; }
+.more-btn b { font-weight: 600; }

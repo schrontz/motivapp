@@ -5,6 +5,7 @@ import * as V from './views.js';
 import { today, addDays, diffDays, weekStart } from './dates.js';
 import { indexLogs, logOf, lastActivityDay } from './stats.js';
 import { autoLogChanges, CATEGORY_GROUPS } from './auto.js';
+import { parseRenphoCsv, bodyPreview, looksLikeRenpho } from './body.js';
 import { parseAlphaCsv, importPreview, exerciseHistory, exerciseKey, splitKey, suggestPlan, mergeTrainings } from './strength.js';
 import { WITHINGS_CLIENT_ID, WITHINGS_REDIRECT } from './config.js';
 
@@ -27,6 +28,10 @@ const S = {
   hasStrengthSchema: false,
   imp: null,
   planDraft: null,
+  body: [],
+  hasBodySchema: false,
+  bimp: null,
+  bodyOpen: new Set(),
   syncing: false,
   idx: new Map(),
   cat: 'all',
@@ -64,6 +69,7 @@ window.addEventListener('appinstalled', () => {
   if (S.loaded) render();
 });
 S.trainRange = Number(local.get('trainRange') || 30);
+S.bodyRange = local.get('bodyRange') || '3m';
 // „Passt so“ beim Muster-Hinweis: erst wieder zeigen, wenn das Muster 4 weitere Zeiträume anhält
 S.hintSeen = (id, count) => {
   const seen = Number(local.get('hint.' + id) || 0);
@@ -87,6 +93,7 @@ window.addEventListener('hashchange', () => {
   S.form = null;
   const r = route();
   if (r.name !== 'import') S.imp = null;
+  if (r.name !== 'body-import') S.bimp = null;
   if (r.name === 'import' && r.id === 'shared') consumeShared();
   render();
   window.scrollTo(0, 0);
@@ -119,6 +126,8 @@ function render() {
     case 'training': html = r.id ? V.sessionView(S, T, r.id) : V.trainingView(S, T); break;
     case 'steps': html = V.stepsView(S, T); break;
     case 'import': html = V.importView(S); break;
+    case 'body': html = V.bodyView(S, T); break;
+    case 'body-import': html = V.bodyImportView(S); break;
     case 'exercise': html = V.exerciseView(S, T, r.id); break;
     case 'plan': ensurePlanDraft(r.id, T); html = V.planForm(S, T, r.id); break;
     case 'habit': html = V.detail(S, T, r.id); break;
@@ -159,6 +168,7 @@ async function persist(fn, errorText = 'Speichern hat nicht geklappt – bitte V
     const msg = String((err && err.message) || '');
     let text = errorText;
     if (/schedule_min/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.';
+    else if (/body_measurements/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 005 (Körperwerte) im SQL-Editor ausführen.';
     else if (/strength_sessions|exercise_plans/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 004 (Krafttraining) im SQL-Editor ausführen.';
     else if (/auto_|tiles|source|schema cache/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 003 (Withings) im SQL-Editor ausführen.';
     toast(text);
@@ -312,12 +322,49 @@ async function removePausesOn(habitId, day) {
 
 // ───────────── Alpha Progression ─────────────
 
-function alphaModule(on) {
+const TILE_ORDER = ['steps', 'training', 'body', 'active', 'distance'];
+
+function setModule(id, on) {
   if (!S.profile) return null;
   const mods = new Set(S.profile.modules || ['habits']);
-  if (on) mods.add('alpha'); else mods.delete('alpha');
+  if (on) mods.add(id); else mods.delete(id);
   S.profile.modules = [...mods];
-  return persist(() => db.updateProfile(S.profile.id, { modules: S.profile.modules }));
+  const patch = { modules: S.profile.modules };
+  // Körperwerte einschalten → Kachel gleich mit anzeigen
+  if (id === 'body' && on && S.hasWithingsSchema) {
+    const tiles = new Set(S.profile.tiles || ['steps', 'training']);
+    tiles.add('body');
+    S.profile.tiles = TILE_ORDER.filter((k) => tiles.has(k));
+    patch.tiles = S.profile.tiles;
+  }
+  return persist(() => db.updateProfile(S.profile.id, patch));
+}
+
+function alphaModule(on) {
+  return setModule('alpha', on);
+}
+
+function handleBodyText(text, name) {
+  const parsed = parseRenphoCsv(text);
+  if (!parsed.measurements.length) {
+    S.bimp = { error: 'Das sieht nicht nach einem Export aus Renpho aus. Bitte die CSV aus „Daten exportieren“ wählen.' };
+  } else {
+    S.bimp = { name, preview: bodyPreview(parsed, S.body) };
+  }
+  render();
+}
+
+async function runBodyImport() {
+  const p = S.bimp && S.bimp.preview;
+  if (!p || !p.fresh.length) return;
+  S.bimp = { ...S.bimp, busy: `Importiere ${p.fresh.length} Messtage …` };
+  render();
+  const saved = await persist(() => db.importBody(p.fresh), 'Import hat nicht geklappt – bitte Verbindung prüfen.');
+  if (!saved) { S.bimp = null; render(); return; }
+  S.body = [...S.body, ...saved].sort((a, b) => (a.day < b.day ? -1 : 1));
+  if (!V.bodyOn(S)) await setModule('body', true);
+  S.bimp = { done: saved.length };
+  render();
 }
 
 function handleImportText(text, name) {
@@ -340,8 +387,14 @@ async function consumeShared() {
     const name = decodeURIComponent(res.headers.get('X-Name') || '') || 'geteilte Datei';
     const text = await res.text();
     await cache.delete('./shared-file');
-    history.replaceState(null, '', location.pathname + location.search + '#/import');
-    handleImportText(text, name);
+    // Was wurde geteilt? Renpho (Komma, „Gewicht(kg)“) oder Alpha Progression
+    if (looksLikeRenpho(text)) {
+      history.replaceState(null, '', location.pathname + location.search + '#/body-import');
+      handleBodyText(text, name);
+    } else {
+      history.replaceState(null, '', location.pathname + location.search + '#/import');
+      handleImportText(text, name);
+    }
   } catch (err) {
     console.error(err);
     toast('Die geteilte Datei konnte nicht gelesen werden – bitte über „CSV-Datei auswählen“.');
@@ -548,6 +601,7 @@ function exportData() {
     eintraege: S.logs,
     pausen: S.pauses,
     krafteinheiten: S.strength,
+    koerperwerte: S.body,
     steigerungsplaene: S.plans
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -664,15 +718,26 @@ root.addEventListener('click', async (e) => {
       if (!S.profile) break;
       const tiles = new Set(S.profile.tiles || ['steps', 'training']);
       if (tiles.has(id)) tiles.delete(id); else tiles.add(id);
-      S.profile.tiles = ['steps', 'training', 'active', 'distance'].filter((k) => tiles.has(k));
+      S.profile.tiles = TILE_ORDER.filter((k) => tiles.has(k));
       render();
       if (S.hasWithingsSchema) await persist(() => db.updateProfile(S.profile.id, { tiles: S.profile.tiles }));
       break;
     }
-    case 'module-toggle':
-      await alphaModule(!V.alphaOn(S));
+    case 'module-toggle': {
+      const on = id === 'body' ? V.bodyOn(S) : V.alphaOn(S);
+      const p = setModule(id, !on);
+      render();
+      await p;
+      break;
+    }
+    case 'body-more':
+      if (S.bodyOpen.has(id)) S.bodyOpen.delete(id); else S.bodyOpen.add(id);
       render();
       break;
+    case 'bimport-go':
+      await runBodyImport(); break;
+    case 'bimport-reset':
+      S.bimp = null; render(); break;
     case 'install': {
       if (!installEvent) { toast('Bitte über das Chrome-Menü ⋮ → „App installieren“.'); break; }
       installEvent.prompt();
@@ -722,12 +787,37 @@ root.addEventListener('change', async (e) => {
     S.imp = { busy: 'Lese Datei …' };
     render();
     try {
-      handleImportText(await file.text(), file.name);
+      const text = await file.text();
+      if (looksLikeRenpho(text)) { S.imp = null; go('#/body-import'); handleBodyText(text, file.name); return; }
+      handleImportText(text, file.name);
     } catch (err) {
       console.error(err);
       S.imp = { error: 'Die Datei konnte nicht gelesen werden.' };
       render();
     }
+    return;
+  }
+  if (action === 'bimport-file') {
+    const file = el.files && el.files[0];
+    if (!file) return;
+    S.bimp = { busy: 'Lese Datei …' };
+    render();
+    try {
+      const text = await file.text();
+      // Versehentlich die Alpha-Datei gewählt? Dann dorthin.
+      if (!looksLikeRenpho(text) && parseAlphaCsv(text).sessions.length) { S.bimp = null; go('#/import'); handleImportText(text, file.name); return; }
+      handleBodyText(text, file.name);
+    } catch (err) {
+      console.error(err);
+      S.bimp = { error: 'Die Datei konnte nicht gelesen werden.' };
+      render();
+    }
+    return;
+  }
+  if (action === 'body-range') {
+    S.bodyRange = el.value;
+    local.set('bodyRange', el.value);
+    render();
     return;
   }
   if (action === 'train-range') {
