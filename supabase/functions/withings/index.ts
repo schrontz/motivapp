@@ -141,7 +141,11 @@ function tokenRow(userId: string, body: any) {
 }
 
 export async function handle(req: Request, deps: { fetch?: typeof fetch; db?: any } = {}): Promise<Response> {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  // Vorab-Anfrage des Browsers: alle angefragten Kopfzeilen erlauben (neuere supabase-js-Versionen schicken ggf. weitere)
+  if (req.method === 'OPTIONS') {
+    const asked = req.headers.get('Access-Control-Request-Headers');
+    return new Response('ok', { headers: { ...CORS, ...(asked ? { 'Access-Control-Allow-Headers': asked } : {}) } });
+  }
   if (req.method !== 'POST') return json({ error: 'Nur POST' }, 405);
 
   const fetcher = deps.fetch || fetch;
