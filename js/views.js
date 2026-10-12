@@ -3,7 +3,7 @@
 
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS, COLORS } from './icons.js';
 import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, parseDay } from './dates.js';
-import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused } from './stats.js';
+import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint } from './stats.js';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -66,13 +66,27 @@ function habitRow(S, item) {
   } else if (!item.sub && h.mini_text) {
     sub = `${scheduleText(h)} · Mini: ${h.mini_text}`;
   }
+  const p = item.period;
   const pills = [
     item.state === 'mini' ? '<span class="pill">Mini</span>' : '',
+    p && p.state === 'mini' ? `<span class="pill">${miniPeriodName(h)}</span>` : '',
+    p && p.state === 'goal' ? '<span class="pill goal">Ziel</span>' : '',
     item.paused ? '<span class="pill pause">Pause</span>' : ''
   ].join('');
-  const progress = h.kind === 'count' && h.target
-    ? `<div class="progress" style="background: var(--k-${col})"><div style="width: ${Math.min(100, Math.round(((log && log.value) || 0) / h.target * 100))}%; background: var(--c-${col})"></div></div>`
-    : '';
+  let progress = '';
+  if (h.kind === 'count' && h.target) {
+    progress = `<div class="progress" style="background: var(--k-${col})"><div style="width: ${Math.min(100, Math.round(((log && log.value) || 0) / h.target * 100))}%; background: var(--c-${col})"></div></div>`;
+  } else if (p && p.target <= 14) {
+    // Striche: dunkel bis zum Minimum, hell weiter bis zum Ziel
+    const segs = [];
+    for (let i = 0; i < p.target; i += 1) {
+      const core = i < p.min;
+      const filled = i < p.n;
+      const bg = filled ? `var(--c-${col})` : (core ? 'var(--field)' : 'var(--border)');
+      segs.push(`<span style="background: ${bg}${filled && !core ? '; opacity: 0.5' : ''}"></span>`);
+    }
+    progress = `<div class="segs" aria-hidden="true">${segs.join('')}</div>`;
+  }
   const stateLabel = { open: 'offen', done: 'erledigt', mini: 'Mini erledigt', partial: 'angefangen' }[item.state];
   const btnStyle = item.state === 'done' ? ` style="background: var(--c-${col})"` : '';
   const btnIcon = item.state === 'done' || item.state === 'mini'
@@ -110,6 +124,11 @@ export function overview(S, T) {
       </div>`
     : '';
 
+  // Freundliche Hinweise bei Mustern (z. B. 4 Mini-Wochen am Stück) – wegklickbar
+  const hints = shown.map((h) => ({ h, hint: patternHint(h, S.idx, S.pauses, T) }))
+    .filter((x) => x.hint && !(S.hintSeen && S.hintSeen(x.h.id, x.hint.count)))
+    .map(({ h, hint }) => hintCard(h, hint)).join('');
+
   let list;
   if (active.length === 0) {
     list = `<div class="empty"><b>Noch keine Gewohnheiten</b><p class="hint" style="margin: 6px 0 16px">Fang mit einer an – klein ist völlig okay.</p><a class="btn" href="#/new">Erste Gewohnheit anlegen</a></div>`;
@@ -133,10 +152,23 @@ export function overview(S, T) {
       </section>
       <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
       ${list}
+      ${hints}
     </div>
     ${nav('overview')}
     ${S.sheet ? sheet(S, T) : ''}
   </div>`;
+}
+
+function hintCard(h, hint, withDismiss = true) {
+  const target = h.schedule_count || 1;
+  return `<section class="hint-card">
+    <div style="font-size: 15px; font-weight: 700">Ein Gedanke zu ${esc(h.name)}</div>
+    <p>Die letzten ${hint.count} ${hint.word} waren ${hint.name}. Passt das Ziel von ${target}× noch, oder willst du es wieder anpeilen?</p>
+    <div class="grid2">
+      <a class="btn soft" href="#/edit/${esc(h.id)}" style="background: var(--surface); color: var(--text)">Ziel anpassen</a>
+      ${withDismiss ? `<button type="button" class="btn ghost" data-action="hint-ok" data-id="${esc(h.id)}" data-count="${hint.count}">Passt so</button>` : ''}
+    </div>
+  </section>`;
 }
 
 // ───────────── Wert eintragen ─────────────
@@ -211,6 +243,8 @@ export function detail(S, T, id) {
         <div class="card stat"><div class="small muted">Letzte 30 Tage</div><div class="num">${st.last30}</div><div class="small muted">Mal geschafft</div></div>
         <div class="card stat"><div class="small muted">Bester Monat</div>${best}</div>
       </section>
+      ${st.hint ? hintCard(h, st.hint, false) : ''}
+      ${st.periods ? periodsCard(h, st.periods, col) : ''}
       <section class="card pad">
         <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">${monthName(T)}</h2><span class="small muted">${quota}</span></div>
         <div class="cal">${WEEKDAYS_SHORT.map((w) => `<div class="wd">${w}</div>`).join('')}${blanks}${cells}</div>
@@ -231,6 +265,27 @@ export function detail(S, T, id) {
     ${nav('habits')}
     ${S.sheet ? sheet(S, T) : ''}
   </div>`;
+}
+
+function periodsCard(h, periods, col) {
+  const weekly = h.schedule === 'per_week';
+  const target = h.schedule_count || 1;
+  const words = { goal: 'Ziel', mini: 'Mini', missed: 'offen', running: 'läuft', paused: 'Pause' };
+  const list = periods.list.filter((p) => p.state !== 'before');
+  if (list.length === 0) return '';
+  const cells = list.map((p) => {
+    let style = 'background: var(--bg)';
+    if (p.state === 'goal') style = `background: var(--c-${col}); color: var(--on-accent)`;
+    else if (p.state === 'mini') style = 'background: var(--k-teal); color: var(--mini-fg)';
+    else if (p.state === 'running') style = 'background: var(--surface); box-shadow: inset 0 0 0 2px var(--field)';
+    else if (p.state === 'paused') style = 'background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 4px, var(--border) 4px, var(--border) 8px)';
+    return `<div class="period" style="${style}"><div class="small" style="font-weight: 600; opacity: 0.85">${esc(p.label)}</div><div style="font-size: 20px; font-weight: 700">${p.hits}/${p.target || target}</div><div class="small" style="font-weight: 600">${words[p.state]}</div></div>`;
+  }).join('');
+  const summary = periods.judged ? `${periods.done} von ${periods.judged} geschafft` : 'noch keine abgeschlossene';
+  return `<section class="card pad">
+    <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">${weekly ? 'Wochen' : 'Monate'}</h2><span class="small muted">${summary}</span></div>
+    <div class="periods">${cells}</div>
+  </section>`;
 }
 
 // ───────────── Alle Gewohnheiten ─────────────
@@ -317,9 +372,14 @@ export function habitForm(S, T, id) {
         ${schedule === 'weekdays' ? `<div class="opts days" role="group" aria-label="Wochentage">
           ${WEEKDAYS_SHORT.map((w, i) => `<label class="opt"><input type="checkbox" name="days" value="${i + 1}"${(f.days || days).includes(i + 1) ? ' checked' : ''}><span>${w}</span></label>`).join('')}
         </div>` : ''}
-        ${schedule === 'per_week' || schedule === 'per_month' ? `<div class="card pad field">
-          <label for="f-count">Wie oft ${schedule === 'per_week' ? 'pro Woche' : 'pro Monat'}?</label>
-          <input id="f-count" class="input" name="count" type="number" inputmode="numeric" min="1" max="${schedule === 'per_week' ? 7 : 31}" value="${esc(f.count ?? h.schedule_count ?? 3)}">
+        ${schedule === 'per_week' || schedule === 'per_month' ? `<div class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+          <div class="grid2">
+            <div class="field"><label for="f-count">Ziel ${schedule === 'per_week' ? 'pro Woche' : 'pro Monat'}</label>
+              <input id="f-count" class="input" name="count" type="number" inputmode="numeric" min="1" max="${schedule === 'per_week' ? 7 : 31}" value="${esc(f.count ?? h.schedule_count ?? 3)}"></div>
+            <div class="field"><label for="f-min">${schedule === 'per_week' ? 'Mini-Woche' : 'Mini-Monat'} ab</label>
+              <input id="f-min" class="input" name="min" type="number" inputmode="numeric" min="1" value="${esc(f.min ?? h.schedule_min ?? '')}" placeholder="optional"></div>
+          </div>
+          <p class="hint">Im Alltag siehst du immer dein Ziel. In Ringen und Quote zählt ${schedule === 'per_week' ? 'die Woche' : 'der Monat'} schon ab der Mini-Zahl als geschafft – so peilst du das Ziel an, ohne dass ${schedule === 'per_week' ? 'eine schwere Woche' : 'ein schwerer Monat'} wehtut.</p>
         </div>` : ''}
         <div class="card pad field">
           <label for="f-start">Ab wann?</label>

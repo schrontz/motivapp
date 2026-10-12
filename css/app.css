@@ -130,6 +130,14 @@ h1, h2, h3, p { margin: 0; }
 .row-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .pill { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--k-teal); color: var(--mini-fg); flex: none; }
 .pill.pause { background: var(--soft); color: var(--muted); }
+.pill.goal { background: var(--k-blue); color: var(--c-blue); }
+.segs { display: flex; gap: 4px; margin-top: 8px; }
+.segs span { flex: 1; height: 6px; border-radius: 3px; }
+.periods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.period { border-radius: 14px; padding: 10px 6px; text-align: center; }
+.hint-card { background: var(--soft); border-radius: var(--radius-m); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.hint-card p { font-size: 14px; line-height: 1.45; }
+.hint-card .btn { height: 44px; font-size: 14px; }
 .progress { height: 6px; border-radius: 3px; margin-top: 8px; overflow: hidden; }
 .progress > div { height: 6px; border-radius: 3px; }
 .check { width: 44px; height: 44px; flex: none; border-radius: 22px; border: 2px solid var(--field); background: transparent; display: flex; align-items: center; justify-content: center; padding: 0; }

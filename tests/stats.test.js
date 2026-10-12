@@ -40,7 +40,7 @@ test('X-mal pro Woche: zählt nur, solange das Wochenziel offen ist', () => {
   const idx = indexLogs(logs);
   const thu = todayItems([perWeek], idx, [], '2026-10-08')[0];
   assert.equal(thu.counted, false);
-  assert.equal(thu.sub, 'diese Woche geschafft');
+  assert.equal(thu.sub, 'diese Woche 3 von 3 · Ziel erreicht');
   const mon = todayItems([perWeek], idx, [], TODAY)[0];
   assert.equal(mon.counted, true);
   assert.equal(mon.sub, 'diese Woche 0 von 3');
@@ -101,6 +101,72 @@ test('Detail-Statistik', () => {
   assert.equal(s.offset, 3); // 1. Oktober 2026 ist ein Donnerstag
   assert.equal(s.cells[4].state, 'mini');
   assert.equal(s.cells[12].state, 'future');
+});
+
+const sport = { id: 's', kind: 'check', schedule: 'per_week', schedule_count: 5, schedule_min: 3, start_day: '2026-08-01', archived: false };
+
+test('Mini-Woche: Alltag zeigt das Ziel, Ring schützt ab dem Minimum', () => {
+  // Woche ab Mo 12.10.: Mo, Di, Mi trainiert → Donnerstag
+  const logs = ['2026-10-12', '2026-10-13', '2026-10-14'].map((day) => ({ habit_id: 's', day, status: 'done' }));
+  const idx = indexLogs(logs);
+  const thu = todayItems([sport], idx, [], '2026-10-15')[0];
+  assert.equal(thu.sub, 'diese Woche 3 von 5 · noch 2 bis zum Ziel');
+  assert.equal(thu.period.state, 'mini');
+  assert.equal(thu.counted, false, 'nach der Mini-Woche zieht ein trainingsfreier Tag den Heute-Ring nicht runter');
+  const tue = todayItems([sport], indexLogs(logs.slice(0, 1)), [], '2026-10-13')[0];
+  assert.equal(tue.sub, 'diese Woche 1 von 5 · noch 2 bis zur Mini-Woche');
+  assert.equal(tue.counted, true);
+});
+
+test('Mini-Woche: Quote ist bei 3 von 5 voll, 5 von 5 bleibt 100 %', () => {
+  const end = '2026-10-18'; // Sonntag
+  const three = ['2026-10-12', '2026-10-14', '2026-10-16'].map((day) => ({ habit_id: 's', day, status: 'done' }));
+  assert.equal(windowQuota([sport], indexLogs(three), [], end, 7).pct, 100);
+  const five = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'].map((day) => ({ habit_id: 's', day, status: 'done' }));
+  assert.equal(windowQuota([sport], indexLogs(five), [], end, 7).pct, 100);
+  // 2 Trainings, Sonntag offen → 6 aktive Tage, erwartet 3 × 6/7 ≈ 2,57 → 78 %
+  const two = three.slice(0, 2);
+  assert.equal(windowQuota([sport], indexLogs(two), [], end, 7).pct, 78);
+});
+
+test('Kalenderwoche', async () => {
+  const { isoWeek } = await import('../js/stats.js');
+  assert.equal(isoWeek('2026-10-12'), 42);
+  assert.equal(isoWeek('2026-01-01'), 1);
+  assert.equal(isoWeek('2026-12-28'), 53);
+  assert.equal(isoWeek('2027-01-04'), 1);
+  assert.equal(isoWeek('2026-03-30'), 14); // nach der Zeitumstellung
+});
+
+test('Wochenübersicht und freundlicher Hinweis', () => {
+  // vier abgeschlossene Wochen (KW 38–41) mit je 3 Trainings, laufende KW 42
+  const logs = [];
+  for (const mon of ['2026-09-14', '2026-09-21', '2026-09-28', '2026-10-05']) {
+    for (const off of [0, 2, 4]) logs.push({ habit_id: 's', day: addDays(mon, off), status: 'done' });
+  }
+  const idx = indexLogs(logs);
+  const s = habitStats(sport, idx, [], TODAY);
+  const last = s.periods.list.slice(-5).map((p) => `${p.label}:${p.state}`);
+  assert.deepEqual(last, ['KW 38:mini', 'KW 39:mini', 'KW 40:mini', 'KW 41:mini', 'KW 42:running']);
+  assert.ok(s.hint, 'nach 4 Mini-Wochen kommt der Hinweis');
+  assert.equal(s.hint.count, 4);
+  // eine Ziel-Woche dazwischen unterbricht das Muster
+  for (const off of [1, 3]) logs.push({ habit_id: 's', day: addDays('2026-10-05', off), status: 'done' });
+  assert.equal(habitStats(sport, indexLogs(logs), [], TODAY).hint, null);
+});
+
+test('Pausen und Start mitten in der Woche senken Ziel und Minimum anteilig', async () => {
+  const { periodNeeds } = await import('../js/stats.js');
+  const pauses = [{ habit_id: null, start_day: '2026-10-12', end_day: '2026-10-14' }]; // Mo–Mi Pause
+  assert.deepEqual(periodNeeds(sport, '2026-10-12', '2026-10-18', pauses), { target: 3, min: 2, active: 4, length: 7 });
+  assert.deepEqual(periodNeeds(sport, '2026-10-12', '2026-10-18', []), { target: 5, min: 3, active: 7, length: 7 });
+  const lateStart = { ...sport, start_day: '2026-10-15' }; // Start Donnerstag
+  assert.deepEqual(periodNeeds(lateStart, '2026-10-12', '2026-10-18', []), { target: 3, min: 2, active: 4, length: 7 });
+  // Woche mit Pause: 2 Trainings reichen für die Mini-Woche
+  const logs = ['2026-10-15', '2026-10-16'].map((day) => ({ habit_id: 's', day, status: 'done' }));
+  const sum = habitStats(sport, indexLogs(logs), pauses, '2026-10-19').periods.list.slice(-2);
+  assert.equal(sum[0].state, 'mini');
+  assert.equal(sum[0].target, 3);
 });
 
 test('Häufigkeitstexte', () => {

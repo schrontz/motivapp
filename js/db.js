@@ -137,10 +137,10 @@ const demo = (() => {
   ];
   const start = addDays(t, -60);
   const habits = [
-    { id: 'h-sport', category_id: 'c-sport', name: 'Sport', icon: 'dumbbell', color: 'blue', kind: 'check', schedule: 'per_week', schedule_count: 3, mini_text: '15 Minuten Bewegung', start_day: start, archived: false, sort_order: 0 },
+    { id: 'h-sport', category_id: 'c-sport', name: 'Sport', icon: 'dumbbell', color: 'blue', kind: 'check', schedule: 'per_week', schedule_count: 5, schedule_min: 3, mini_text: '15 Minuten Bewegung', start_day: start, archived: false, sort_order: 0 },
     { id: 'h-skin', category_id: 'c-pflege', name: 'Hautpflege', icon: 'drop', color: 'teal', kind: 'check', schedule: 'daily', start_day: start, archived: false, sort_order: 1 },
     { id: 'h-duo', category_id: 'c-kopf', name: 'Duolingo', icon: 'chat', color: 'orange', kind: 'check', schedule: 'daily', mini_text: 'Eine Lektion', start_day: start, archived: false, sort_order: 2 },
-    { id: 'h-brain', category_id: 'c-kopf', name: 'Hirntraining', icon: 'spark', color: 'orange', kind: 'check', schedule: 'weekdays', schedule_days: [1, 2, 3, 4, 5], mini_text: '5 Minuten', start_day: start, archived: false, sort_order: 3 },
+    { id: 'h-brain', category_id: 'c-kopf', name: 'Hirntraining', icon: 'spark', color: 'orange', kind: 'check', schedule: 'per_week', schedule_count: 5, schedule_min: 3, mini_text: '5 Minuten', start_day: start, archived: false, sort_order: 3 },
     { id: 'h-push', category_id: 'c-sport', name: 'Liegestütze', icon: 'dumbbell', color: 'blue', kind: 'count', target: 22, unit: 'Wdh.', mini_value: 10, schedule: 'daily', start_day: start, archived: false, sort_order: 4 }
   ];
   // deterministische Zufallsfolge, damit die Demo immer gleich aussieht
@@ -155,7 +155,9 @@ const demo = (() => {
     const duo = r();
     if (duo < 0.7) logs.push({ habit_id: 'h-duo', day: d, status: 'done' });
     else if (duo < 0.85) logs.push({ habit_id: 'h-duo', day: d, status: 'mini' });
-    if (r() < 0.6) logs.push({ habit_id: 'h-brain', day: d, status: r() < 0.3 ? 'mini' : 'done' });
+    // Hirntraining: immer genau Mo, Mi, Fr → lauter Mini-Wochen (zeigt den freundlichen Hinweis)
+    if ([1, 3, 5].includes(new Date(d + 'T12:00').getDay())) logs.push({ habit_id: 'h-brain', day: d, status: 'done' });
+    r();
     const p = r();
     if (p < 0.6) logs.push({ habit_id: 'h-push', day: d, status: 'done', value: 22 });
     else if (p < 0.75) logs.push({ habit_id: 'h-push', day: d, status: 'mini', value: 10 });

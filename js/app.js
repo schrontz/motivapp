@@ -33,6 +33,11 @@ const session = {
   set(k, v) { try { sessionStorage.setItem('motivator.' + k, v); } catch { /* egal */ } }
 };
 S.cat = local.get('cat') || 'all';
+// „Passt so“ beim Muster-Hinweis: erst wieder zeigen, wenn das Muster 4 weitere Zeiträume anhält
+S.hintSeen = (id, count) => {
+  const seen = Number(local.get('hint.' + id) || 0);
+  return seen > 0 && count < seen + 4;
+};
 
 // ───────────── Navigation ─────────────
 
@@ -112,7 +117,8 @@ async function persist(fn, errorText = 'Speichern hat nicht geklappt – bitte V
     return await fn();
   } catch (err) {
     console.error(err);
-    toast(errorText);
+    const msg = String((err && err.message) || '');
+    toast(/schedule_min/.test(msg) ? 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.' : errorText);
     try { await reload(); } catch { /* offline */ }
     render();
     return null;
@@ -179,6 +185,7 @@ function readHabitForm(form) {
     // Wochentage nur übernehmen, wenn die Auswahl schon sichtbar war – sonst gelten die Vorgaben (Mo–Fr)
     days: form.querySelector('input[name="days"]') ? fd.getAll('days').map(Number) : undefined,
     count: fd.get('count'),
+    min: fd.get('min'),
     mini_text: fd.get('mini_text'),
     mini_value: fd.get('mini_value'),
     start_day: fd.get('start_day') ? String(fd.get('start_day')) : undefined
@@ -199,6 +206,13 @@ async function submitHabit(form) {
   if (f.schedule === 'weekdays' && !(f.days && f.days.length)) return err('Bitte mindestens einen Wochentag wählen.');
   if (f.category === '__new' && !f.newcat.trim()) return err('Bitte einen Namen für die neue Kategorie eingeben.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(f.start_day || '')) return err('Bitte ein Startdatum wählen.');
+  const periodic = f.schedule === 'per_week' || f.schedule === 'per_month';
+  const goal = Math.max(1, Math.round(num(f.count) || 1));
+  const minRaw = num(f.min);
+  if (periodic && minRaw != null && (minRaw < 1 || Math.round(minRaw) > goal)) {
+    return err(`Die Mini-Zahl muss zwischen 1 und ${goal} liegen.`);
+  }
+  const schedMin = periodic && minRaw != null && Math.round(minRaw) < goal ? Math.round(minRaw) : null;
 
   const btn = form.querySelector('button[type="submit"]');
   if (btn) btn.disabled = true;
@@ -225,7 +239,8 @@ async function submitHabit(form) {
     unit: f.kind === 'count' ? (f.unit || '').toString().trim() || null : null,
     schedule: f.schedule,
     schedule_days: f.schedule === 'weekdays' ? f.days : null,
-    schedule_count: f.schedule === 'per_week' || f.schedule === 'per_month' ? Math.max(1, Math.round(num(f.count) || 1)) : null,
+    schedule_count: periodic ? goal : null,
+    schedule_min: schedMin,
     mini_text: f.kind === 'check' ? (f.mini_text || '').toString().trim() || null : null,
     mini_value: f.kind === 'count' ? num(f.mini_value) : null,
     start_day: f.start_day
@@ -351,6 +366,10 @@ root.addEventListener('click', async (e) => {
     }
     case 'export':
       exportData(); break;
+    case 'hint-ok':
+      local.set('hint.' + id, el.dataset.count);
+      render();
+      break;
     case 'logout':
       await db.signOut(); break;
     case 'welcome-toggle':
