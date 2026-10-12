@@ -1,0 +1,433 @@
+// Oberfläche: reine Funktionen, die aus dem Zustand HTML erzeugen.
+// Alle Texte aus der Datenbank laufen durch esc().
+
+import { svg, habitIcon, HABIT_ICONS, UI_ICONS, COLORS } from './icons.js';
+import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, parseDay } from './dates.js';
+import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused } from './stats.js';
+
+export function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function fmt(n) {
+  if (n == null || n === '') return '';
+  return Number(n).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
+export function colorOf(S, h) {
+  const cat = S.categories.find((c) => c.id === h.category_id);
+  return (cat && cat.color) || h.color || 'blue';
+}
+
+function nav(active) {
+  const item = (href, key, icon, label) =>
+    `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${svg(icon, 22)}${label}</a>`;
+  return `<nav class="nav" aria-label="Hauptnavigation"><div class="nav-inner">
+    ${item('#/', 'overview', UI_ICONS.home, 'Übersicht')}
+    ${item('#/habits', 'habits', UI_ICONS.list, 'Gewohnheiten')}
+    ${item('#/profile', 'profile', UI_ICONS.user, 'Profil')}
+  </div></nav>`;
+}
+
+function dash(r, f) {
+  const c = 2 * Math.PI * r;
+  const len = Math.max(0.001, Math.min(1, f || 0)) * c;
+  return `${len.toFixed(1)} ${c.toFixed(1)}`;
+}
+
+function ringsCard(today, week, month) {
+  const fToday = today.due ? today.done / today.due : 0;
+  const fWeek = week.expected ? week.hits / week.expected : 0;
+  const fMonth = month.expected ? month.hits / month.expected : 0;
+  const tText = today.due ? `${today.done} von ${today.due}` : '–';
+  const wText = week.pct == null ? '–' : `${week.pct} %`;
+  const mText = month.pct == null ? '–' : `${month.pct} %`;
+  const label = `Heute ${tText}, letzte 7 Tage ${wText}, letzte 30 Tage ${mText}`;
+  const ring = (r, n, f) => `
+    <circle class="ring-track" cx="90" cy="90" r="${r}" style="stroke: var(--ring-${n}-track)"></circle>
+    <circle class="ring-val" cx="90" cy="90" r="${r}" style="stroke: var(--ring-${n})" stroke-dasharray="${dash(r, f)}"></circle>`;
+  const leg = (n, l, v) => `<div class="legend-item"><span class="dot" style="background: var(--ring-${n})"></span><div><div class="label">${l}</div><div class="value">${v}</div></div></div>`;
+  return `<section class="card rings">
+    <svg width="150" height="150" viewBox="0 0 180 180" role="img" aria-label="${esc(label)}">
+      <g transform="rotate(-90 90 90)">${ring(78, 1, fToday)}${ring(60, 2, fWeek)}${ring(42, 3, fMonth)}</g>
+    </svg>
+    <div class="legend">${leg(1, 'Heute', tText)}${leg(2, 'Letzte 7 Tage', wText)}${leg(3, 'Letzte 30 Tage', mText)}</div>
+  </section>`;
+}
+
+function habitRow(S, item) {
+  const h = item.habit;
+  const col = colorOf(S, h);
+  const log = item.log;
+  let sub = item.sub || scheduleText(h);
+  if (h.kind === 'count') {
+    const v = log && log.value != null ? log.value : 0;
+    sub = `${fmt(v)} von ${fmt(h.target)}${h.unit ? ' ' + esc(h.unit) : ''}` + (item.sub ? ` · ${item.sub}` : '');
+  } else if (!item.sub && h.mini_text) {
+    sub = `${scheduleText(h)} · Mini: ${h.mini_text}`;
+  }
+  const pills = [
+    item.state === 'mini' ? '<span class="pill">Mini</span>' : '',
+    item.paused ? '<span class="pill pause">Pause</span>' : ''
+  ].join('');
+  const progress = h.kind === 'count' && h.target
+    ? `<div class="progress" style="background: var(--k-${col})"><div style="width: ${Math.min(100, Math.round(((log && log.value) || 0) / h.target * 100))}%; background: var(--c-${col})"></div></div>`
+    : '';
+  const stateLabel = { open: 'offen', done: 'erledigt', mini: 'Mini erledigt', partial: 'angefangen' }[item.state];
+  const btnStyle = item.state === 'done' ? ` style="background: var(--c-${col})"` : '';
+  const btnIcon = item.state === 'done' || item.state === 'mini'
+    ? svg(HABIT_ICONS.check.path, 20, 2.5)
+    : (h.kind === 'count' ? svg(UI_ICONS.plus, 18, 2.5) : '');
+  const action = h.kind === 'count' ? 'open-sheet' : 'toggle';
+  const aria = h.kind === 'count' ? `${h.name}: Wert eintragen (${stateLabel})` : `${h.name}: ${stateLabel}. Tippen zum Ändern`;
+  return `<div class="row${item.paused ? ' paused' : ''}">
+    <div class="hicon" style="background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon)}</div>
+    <a class="row-main" href="#/habit/${esc(h.id)}">
+      <div class="row-title"><span>${esc(h.name)}</span>${pills}</div>
+      <div class="row-sub">${esc(sub)}</div>
+      ${progress}
+    </a>
+    <button type="button" class="check" data-action="${action}" data-id="${esc(h.id)}" data-state="${item.state}"${btnStyle} aria-label="${esc(aria)}">${btnIcon}</button>
+  </div>`;
+}
+
+// ───────────── Übersicht ─────────────
+
+export function overview(S, T) {
+  const active = S.habits.filter((h) => !h.archived);
+  const usedCats = S.categories.filter((c) => active.some((h) => h.category_id === c.id));
+  const cat = usedCats.some((c) => c.id === S.cat) ? S.cat : 'all';
+  const shown = cat === 'all' ? active : active.filter((h) => h.category_id === cat);
+  const items = todayItems(shown, S.idx, S.pauses, T);
+  const ids = new Set(shown.map((h) => h.id));
+  const total = totalHits(S.logs.filter((l) => ids.has(l.habit_id) || cat === 'all'));
+  const name = S.profile && S.profile.display_name ? `, ${esc(S.profile.display_name)}` : '';
+
+  const chips = usedCats.length
+    ? `<div class="chips" role="group" aria-label="Nach Kategorie filtern">
+        <button type="button" class="chip" data-action="cat" data-id="all" aria-pressed="${cat === 'all'}">Alle</button>
+        ${usedCats.map((c) => `<button type="button" class="chip" data-action="cat" data-id="${esc(c.id)}" aria-pressed="${cat === c.id}">${esc(c.name)}</button>`).join('')}
+      </div>`
+    : '';
+
+  let list;
+  if (active.length === 0) {
+    list = `<div class="empty"><b>Noch keine Gewohnheiten</b><p class="hint" style="margin: 6px 0 16px">Fang mit einer an – klein ist völlig okay.</p><a class="btn" href="#/new">Erste Gewohnheit anlegen</a></div>`;
+  } else if (items.length === 0) {
+    list = `<div class="empty"><b>Heute ist nichts geplant</b><p class="hint" style="margin-top: 4px">Genieß den freien Tag.</p></div>`;
+  } else {
+    list = `<div class="card list">${items.map((i) => habitRow(S, i)).join('')}</div>`;
+  }
+
+  return `<div class="app">
+    <header class="top">
+      <div><div class="date">${longDate(T)}</div><h1>${greeting()}${name}</h1></div>
+      <a class="icon-btn" href="#/new" aria-label="Neue Gewohnheit anlegen">${svg(UI_ICONS.plus)}</a>
+    </header>
+    ${chips}
+    <div class="wrap">
+      ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30))}
+      <section class="total">
+        <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
+        <div><div class="big">${fmt(total)} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
+      </section>
+      <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
+      ${list}
+    </div>
+    ${nav('overview')}
+    ${S.sheet ? sheet(S, T) : ''}
+  </div>`;
+}
+
+// ───────────── Wert eintragen ─────────────
+
+export function sheet(S, T) {
+  const h = S.habits.find((x) => x.id === S.sheet.id);
+  if (!h) return '';
+  const day = S.sheet.day;
+  const log = logOf(S.idx, h.id, day);
+  const col = colorOf(S, h);
+  const paused = isPaused(h, day, S.pauses.filter((p) => p.habit_id === h.id));
+  const dayText = day === T ? 'heute' : `am ${parseDay(day).getDate()}. ${monthName(day)}`;
+  const target = h.target ? `Ziel ${dayText}: ${fmt(h.target)}${h.unit ? ' ' + esc(h.unit) : ''}` : `Eintrag ${dayText}`;
+  return `<button type="button" class="scrim" data-action="close-sheet" aria-label="Schließen"></button>
+  <section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(h.name)} eintragen">
+    <div class="handle"></div>
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div class="hicon" style="width: 44px; height: 44px; border-radius: 14px; background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon, 22)}</div>
+      <div><h2 style="font-size: 22px">${esc(h.name)}</h2><div class="small muted">${target}</div></div>
+    </div>
+    <div class="stepper">
+      <button type="button" data-action="sheet-dec" aria-label="Eins weniger">${svg(UI_ICONS.minus, 22, 2.5)}</button>
+      <input id="sheet-val" type="number" inputmode="decimal" min="0" step="1" value="${esc(S.sheet.value)}" aria-label="Wert${h.unit ? ' in ' + esc(h.unit) : ''}">
+      <button type="button" data-action="sheet-inc" aria-label="Eins mehr">${svg(UI_ICONS.plus, 22, 2.5)}</button>
+    </div>
+    <button type="button" class="btn" data-action="sheet-save">Speichern</button>
+    <div class="grid2">
+      ${h.mini_value != null ? `<button type="button" class="btn soft" data-action="sheet-mini">Mini-Version (${fmt(h.mini_value)})</button>` : ''}
+      ${paused
+        ? '<button type="button" class="btn ghost" data-action="sheet-unpause">Pause aufheben</button>'
+        : `<button type="button" class="btn ghost" data-action="sheet-pause">${day === T ? 'Heute' : 'Tag als'} Pause</button>`}
+      ${log ? '<button type="button" class="btn danger" data-action="sheet-delete">Eintrag löschen</button>' : ''}
+    </div>
+    <p class="small muted" style="text-align: center">Die Mini-Version zählt als geschafft. Ein Pausentag zählt nicht gegen dich.</p>
+  </section>`;
+}
+
+// ───────────── Detail ─────────────
+
+export function detail(S, T, id) {
+  const h = S.habits.find((x) => x.id === id);
+  if (!h) return notFound();
+  const st = habitStats(h, S.idx, S.pauses, T);
+  const col = colorOf(S, h);
+  const cat = S.categories.find((c) => c.id === h.category_id);
+  const best = st.best
+    ? `<div class="num">${st.best.count}</div><div class="small muted">${st.best.keys.slice(0, 2).map((k) => `${monthShort(k)} ${k.slice(0, 4)}`).join(' & ')}</div>`
+    : '<div class="num">–</div><div class="small muted">noch keine Daten</div>';
+  const quota = st.monthQuota.pct == null ? 'noch nichts fällig' : `${st.monthQuota.pct} % geschafft`;
+  const maxBar = Math.max(1, ...st.months.map((m) => m.count));
+  const stateWord = { done: 'geschafft', mini: 'Mini geschafft', paused: 'Pause', open: 'offen', free: 'nicht geplant', future: 'Zukunft', before: 'vor dem Start' };
+  const cells = st.cells.map((c) => {
+    const disabled = c.state === 'future' || c.state === 'before';
+    return `<button type="button" data-action="cal" data-id="${esc(h.id)}" data-day="${c.day}" data-state="${c.state}" data-today="${c.today}"${disabled ? ' disabled' : ''} aria-label="${c.n}. ${monthName(T)}: ${stateWord[c.state]}">${c.n}</button>`;
+  }).join('');
+  const blanks = '<span></span>'.repeat(st.offset);
+  return `<div class="app">
+    <div class="bar">
+      <a class="link-btn" href="#/">${svg(UI_ICONS.back, 20, 2.2)}Übersicht</a>
+      <a class="link-btn" href="#/edit/${esc(h.id)}">Bearbeiten</a>
+    </div>
+    <div class="wrap">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 0 4px">
+        <div class="hicon" style="width: 52px; height: 52px; border-radius: 16px; background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon, 26)}</div>
+        <div><h1 style="font-size: 28px">${esc(h.name)}</h1><div class="small muted">${esc(scheduleText(h))}${cat ? ' · ' + esc(cat.name) : ''}${h.mini_text ? ' · Mini: ' + esc(h.mini_text) : ''}</div></div>
+      </div>
+      <section class="stat-grid">
+        <div class="card stat-hero">
+          <div><div class="small" style="font-weight: 600">Insgesamt</div><div class="num">${fmt(st.total)} Mal</div><div class="small">geschafft · kann nur wachsen</div></div>
+          <span style="color: var(--c-teal)">${svg(UI_ICONS.trend, 40)}</span>
+        </div>
+        <div class="card stat"><div class="small muted">Letzte 30 Tage</div><div class="num">${st.last30}</div><div class="small muted">Mal geschafft</div></div>
+        <div class="card stat"><div class="small muted">Bester Monat</div>${best}</div>
+      </section>
+      <section class="card pad">
+        <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">${monthName(T)}</h2><span class="small muted">${quota}</span></div>
+        <div class="cal">${WEEKDAYS_SHORT.map((w) => `<div class="wd">${w}</div>`).join('')}${blanks}${cells}</div>
+        <div class="cal-legend">
+          <span><i class="sw" style="background: var(--c-blue)"></i>geschafft</span>
+          <span><i class="sw" style="background: var(--k-teal)"></i>Mini</span>
+          <span><i class="sw" style="background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 3px, var(--border) 3px, var(--border) 6px)"></i>Pause</span>
+        </div>
+        <p class="hint" style="margin-top: 10px">Vergessen einzutragen? Tipp auf einen vergangenen Tag.</p>
+      </section>
+      <section class="card pad">
+        <div class="section-head" style="margin: 0 0 14px"><h2 style="font-size: 17px">Pro Monat</h2><span class="small muted">letzte 6 Monate</span></div>
+        <div class="bars" role="img" aria-label="${esc(st.months.map((m) => `${monthShort(m.key)} ${m.count}`).join(', '))}">
+          ${st.months.map((m) => `<div><div class="small" style="font-weight: 600">${m.count}</div><div class="b${m.running ? ' running' : ''}" style="height: ${Math.round(m.count / maxBar * 100)}px"></div><div class="small muted">${monthShort(m.key)}</div></div>`).join('')}
+        </div>
+      </section>
+    </div>
+    ${nav('habits')}
+    ${S.sheet ? sheet(S, T) : ''}
+  </div>`;
+}
+
+// ───────────── Alle Gewohnheiten ─────────────
+
+export function habitsList(S) {
+  const active = S.habits.filter((h) => !h.archived);
+  const groups = S.categories.map((c) => ({ name: c.name, items: active.filter((h) => h.category_id === c.id) }));
+  groups.push({ name: 'Ohne Kategorie', items: active.filter((h) => !S.categories.some((c) => c.id === h.category_id)) });
+  const body = active.length === 0
+    ? `<div class="empty"><b>Noch keine Gewohnheiten</b><p class="hint" style="margin-top: 4px">Leg oben rechts die erste an.</p></div>`
+    : groups.filter((g) => g.items.length).map((g) => `
+      <div class="section-head"><h2 style="font-size: 16px">${esc(g.name)}</h2></div>
+      <div class="card list">${g.items.map((h) => {
+        const col = colorOf(S, h);
+        return `<a class="row" href="#/habit/${esc(h.id)}" style="text-decoration: none; color: inherit">
+          <div class="hicon" style="background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon)}</div>
+          <div class="row-main"><div class="row-title"><span>${esc(h.name)}</span></div><div class="row-sub">${esc(scheduleText(h))}${h.kind === 'count' ? ` · Ziel ${fmt(h.target)}${h.unit ? ' ' + esc(h.unit) : ''}` : ''}</div></div>
+          <span class="muted" style="transform: rotate(180deg); display: flex">${svg(UI_ICONS.back, 18)}</span>
+        </a>`;
+      }).join('')}</div>`).join('');
+  return `<div class="app">
+    <header class="top"><div><h1>Gewohnheiten</h1></div><a class="icon-btn" href="#/new" aria-label="Neue Gewohnheit anlegen">${svg(UI_ICONS.plus)}</a></header>
+    <div class="wrap" style="margin-top: 8px">${body}</div>
+    ${nav('habits')}
+  </div>`;
+}
+
+// ───────────── Anlegen / Bearbeiten ─────────────
+
+export function habitForm(S, T, id) {
+  const editing = id ? S.habits.find((x) => x.id === id) : null;
+  if (id && !editing) return notFound();
+  const h = editing || { name: '', icon: 'check', kind: 'check', schedule: 'daily', schedule_days: [1, 2, 3, 4, 5], schedule_count: 3, category_id: S.cat !== 'all' ? S.cat : null };
+  const f = S.form || {};
+  const kind = f.kind || h.kind;
+  const schedule = f.schedule || h.schedule;
+  const catSel = f.category ?? (h.category_id || '');
+  const radio = (name, value, label, current) =>
+    `<label class="opt"><input type="radio" name="${name}" value="${value}"${current === value ? ' checked' : ''} data-action="form-change"><span>${label}</span></label>`;
+  const days = h.schedule_days || [];
+  return `<div class="app">
+    <div class="bar">
+      <a class="link-btn" href="${editing ? '#/habit/' + esc(editing.id) : '#/'}">Abbrechen</a>
+      <h1>${editing ? 'Gewohnheit bearbeiten' : 'Neue Gewohnheit'}</h1>
+      <span style="width: 86px"></span>
+    </div>
+    <form class="wrap" data-form="habit" novalidate style="padding-bottom: 24px; gap: 20px">
+      <section class="card pad" style="display: flex; flex-direction: column; gap: 14px">
+        <div class="field"><label for="f-name">Name</label>
+          <input id="f-name" class="input" name="name" required maxlength="60" value="${esc(f.name ?? h.name)}" placeholder="z. B. Duolingo" autocomplete="off"></div>
+        <div class="field"><span class="label">Symbol</span>
+          <div class="opts icons" role="radiogroup" aria-label="Symbol">
+            ${Object.entries(HABIT_ICONS).map(([k, v]) => `<label class="opt"><input type="radio" name="icon" value="${k}"${(f.icon || h.icon) === k ? ' checked' : ''} aria-label="${v.label}"><span>${svg(v.path, 22)}</span></label>`).join('')}
+          </div></div>
+        <div class="field"><label for="f-cat">Kategorie</label>
+          <select id="f-cat" class="input" name="category" data-action="form-change">
+            <option value="">Keine</option>
+            ${S.categories.map((c) => `<option value="${esc(c.id)}"${catSel === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}
+            <option value="__new"${catSel === '__new' ? ' selected' : ''}>Neue Kategorie …</option>
+          </select></div>
+        ${catSel === '__new' ? `<div class="field"><label for="f-newcat">Name der neuen Kategorie</label><input id="f-newcat" class="input" name="newcat" maxlength="40" value="${esc(f.newcat || '')}" placeholder="z. B. Sport"></div>` : ''}
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <h2 class="h3">Wie zählst du?</h2>
+        <div class="seg" role="radiogroup" aria-label="Art">
+          <label><input type="radio" name="kind" value="check"${kind === 'check' ? ' checked' : ''} data-action="form-change"><span>Abhaken</span></label>
+          <label><input type="radio" name="kind" value="count"${kind === 'count' ? ' checked' : ''} data-action="form-change"><span>Zahl eintragen</span></label>
+        </div>
+        ${kind === 'count' ? `<div class="card pad grid2">
+          <div class="field"><label for="f-target">Tagesziel</label><input id="f-target" class="input" name="target" type="number" inputmode="decimal" min="0" value="${esc(f.target ?? h.target ?? '')}" placeholder="20"></div>
+          <div class="field"><label for="f-unit">Einheit</label><input id="f-unit" class="input" name="unit" maxlength="20" value="${esc(f.unit ?? h.unit ?? '')}" placeholder="Wdh."></div>
+        </div>` : ''}
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <h2 class="h3">Wie oft?</h2>
+        <div class="opts" role="radiogroup" aria-label="Häufigkeit">
+          ${radio('schedule', 'daily', 'Täglich', schedule)}
+          ${radio('schedule', 'weekdays', 'Bestimmte Tage', schedule)}
+          ${radio('schedule', 'per_week', 'X-mal pro Woche', schedule)}
+          ${radio('schedule', 'per_month', 'X-mal pro Monat', schedule)}
+        </div>
+        ${schedule === 'weekdays' ? `<div class="opts days" role="group" aria-label="Wochentage">
+          ${WEEKDAYS_SHORT.map((w, i) => `<label class="opt"><input type="checkbox" name="days" value="${i + 1}"${(f.days || days).includes(i + 1) ? ' checked' : ''}><span>${w}</span></label>`).join('')}
+        </div>` : ''}
+        ${schedule === 'per_week' || schedule === 'per_month' ? `<div class="card pad field">
+          <label for="f-count">Wie oft ${schedule === 'per_week' ? 'pro Woche' : 'pro Monat'}?</label>
+          <input id="f-count" class="input" name="count" type="number" inputmode="numeric" min="1" max="${schedule === 'per_week' ? 7 : 31}" value="${esc(f.count ?? h.schedule_count ?? 3)}">
+        </div>` : ''}
+      </section>
+
+      <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="font-size: 15px">Mini-Version</h2>
+        <p class="hint">Für schwere Tage. Zählt genauso als geschafft.</p>
+        ${kind === 'count'
+          ? `<div class="field"><label for="f-minival">Mini-Wert</label><input id="f-minival" class="input" name="mini_value" type="number" inputmode="decimal" min="0" value="${esc(f.mini_value ?? h.mini_value ?? '')}" placeholder="10"></div>`
+          : `<div class="field"><label for="f-minitext">Was ist die Mini-Version?</label><input id="f-minitext" class="input" name="mini_text" maxlength="60" value="${esc(f.mini_text ?? h.mini_text ?? '')}" placeholder="z. B. 5 Minuten"></div>`}
+      </section>
+
+      <p class="hint" style="padding: 0 4px">Steigerung und Erinnerungen kommen in einer der nächsten Versionen.</p>
+      <p id="form-error" class="small" style="color: var(--danger); padding: 0 4px" role="alert"></p>
+      <button type="submit" class="btn">${editing ? 'Speichern' : 'Gewohnheit anlegen'}</button>
+      ${editing ? '<button type="button" class="btn danger" data-action="archive" data-id="' + esc(editing.id) + '">Gewohnheit entfernen</button><p class="hint" style="text-align: center">Bisherige Einträge bleiben in deiner Gesamtzahl erhalten.</p>' : ''}
+    </form>
+  </div>`;
+}
+
+// ───────────── Profil ─────────────
+
+export function profile(S, email) {
+  const cats = S.categories.map((c) => `<div class="cat-row">
+      <input class="input" value="${esc(c.name)}" maxlength="40" aria-label="Name der Kategorie" data-action="cat-rename" data-id="${esc(c.id)}">
+      <select class="input" aria-label="Farbe" data-action="cat-color" data-id="${esc(c.id)}">
+        ${COLORS.map((x) => `<option value="${x.id}"${c.color === x.id ? ' selected' : ''}>${x.label}</option>`).join('')}
+      </select>
+      <button type="button" class="icon-btn" data-action="cat-delete" data-id="${esc(c.id)}" aria-label="Kategorie ${esc(c.name)} löschen" style="border: 0">${svg('M6 6l12 12M18 6L6 18', 18)}</button>
+    </div>`).join('');
+  return `<div class="app">
+    <header class="top"><div><h1>Profil</h1><div class="small muted" style="margin-top: 4px">${esc(email || '')}</div></div></header>
+    <div class="wrap" style="margin-top: 8px; gap: 16px">
+      <section class="card pad field">
+        <label for="p-name">Wie soll ich dich nennen?</label>
+        <input id="p-name" class="input" value="${esc((S.profile && S.profile.display_name) || '')}" maxlength="40" data-action="profile-name">
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <h2 class="h3">Kategorien</h2>
+        ${S.categories.length ? `<div class="card list">${cats}</div>` : '<p class="hint" style="padding: 0 4px">Noch keine Kategorien. Du kannst sie hier oder beim Anlegen einer Gewohnheit erstellen.</p>'}
+        <form class="card pad" data-form="new-cat" style="display: flex; gap: 10px">
+          <input class="input" name="name" maxlength="40" placeholder="Neue Kategorie" aria-label="Neue Kategorie">
+          <button type="submit" class="icon-btn" aria-label="Kategorie hinzufügen">${svg(UI_ICONS.plus)}</button>
+        </form>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <h2 class="h3">Deine Daten</h2>
+        <button type="button" class="btn ghost" data-action="export">Alle Daten herunterladen</button>
+        <p class="hint" style="padding: 0 4px">Speichert alles als Datei – als Sicherung oder zum Mitnehmen.</p>
+      </section>
+      <button type="button" class="btn danger" data-action="logout">Abmelden</button>
+      <p class="hint" style="text-align: center">Kacheln für Schritte, Training und Gewicht kommen mit der Withings-Anbindung.</p>
+    </div>
+    ${nav('profile')}
+  </div>`;
+}
+
+// ───────────── Willkommen zurück ─────────────
+
+export function welcome(S, T, last) {
+  const gap = diffDays(last, T) - 1;
+  const total = totalHits(S.logs);
+  const on = S.welcomePause !== false;
+  return `<div class="welcome">
+    <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true" style="align-self: center; margin-top: 12px">
+      <circle cx="60" cy="60" r="52" fill="none" style="stroke: var(--ring-1-track)" stroke-width="10"></circle>
+      <circle cx="60" cy="60" r="36" fill="none" style="stroke: var(--ring-2-track)" stroke-width="10"></circle>
+      <circle cx="60" cy="60" r="20" fill="none" style="stroke: var(--ring-3-track)" stroke-width="10"></circle>
+      <circle cx="60" cy="60" r="6" style="fill: var(--ring-3)"></circle>
+    </svg>
+    <div>
+      <h1>Schön, dass du<br>wieder da bist.</h1>
+      <p class="lead">Du hast ${gap} ${gap === 1 ? 'Tag' : 'Tage'} nichts eingetragen.<br>Das ist völlig in Ordnung.</p>
+    </div>
+    <section class="total" style="flex-direction: column; align-items: flex-start; gap: 2px">
+      <div class="small" style="font-weight: 600">Was bleibt</div>
+      <div style="font-size: 22px; font-weight: 700">${fmt(total)} Mal drangeblieben</div>
+      <div class="small">Das nimmt dir keine Pause weg.</div>
+    </section>
+    <section class="card pad" style="display: flex; align-items: center; justify-content: space-between; gap: 14px">
+      <div><div style="font-size: 15px; font-weight: 700">Als Pause eintragen</div>
+        <div class="small muted" style="margin-top: 2px">${on ? `Die ${gap} Tage zählen nicht in deine Quoten.` : `Die ${gap} Tage zählen als offene Tage.`}</div></div>
+      <button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="Die Lücke als Pause eintragen" data-action="welcome-toggle"></button>
+    </section>
+    <div style="flex: 1"></div>
+    <button type="button" class="btn" data-action="welcome-go">Weiter zur Übersicht</button>
+  </div>`;
+}
+
+// ───────────── Login ─────────────
+
+export function login(error) {
+  return `<form class="login" data-form="login">
+    <div>
+      <h1>Motivator</h1>
+      <p class="muted" style="margin-top: 6px">Schön, dass du da bist.</p>
+    </div>
+    <div class="field"><label for="l-mail">E-Mail</label><input id="l-mail" class="input" type="email" name="email" autocomplete="username" required></div>
+    <div class="field"><label for="l-pw">Passwort</label><input id="l-pw" class="input" type="password" name="password" autocomplete="current-password" required></div>
+    <p class="small" style="color: var(--danger); min-height: 18px" role="alert">${esc(error || '')}</p>
+    <button type="submit" class="btn">Anmelden</button>
+  </form>`;
+}
+
+export function notFound() {
+  return `<div class="app"><div class="wrap" style="padding-top: 60px; text-align: center; gap: 16px">
+    <p>Das gibt es (nicht mehr).</p><a class="btn" href="#/">Zur Übersicht</a></div></div>`;
+}
+
+export function loading(text = 'Lädt …') {
+  return `<div class="loading">${esc(text)}</div>`;
+}
