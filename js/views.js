@@ -392,15 +392,28 @@ export function trainingView(S, T) {
   let trend = '';
   if (hrList.length >= 2) {
     const vals = hrList.map((w) => w.hr_avg);
-    const lo = Math.min(...vals) - 3;
-    const hi = Math.max(...vals) + 3;
-    const pts = vals.map((v, i) => `${Math.round((i / (vals.length - 1)) * 316) + 2},${Math.round(98 - ((v - lo) / (hi - lo)) * 88)}`).join(' ');
+    const vmin = Math.min(...vals);
+    const vmax = Math.max(...vals);
+    const lo = vmin - 2;
+    const hi = Math.max(vmax + 2, lo + 6);
+    const W = 300;
+    const Hc = 120;
+    const pad = 8;
+    const xy = vals.map((v, i) => [pad + (i / (vals.length - 1)) * (W - 2 * pad), pad + (1 - (v - lo) / (hi - lo)) * (Hc - 2 * pad)]);
+    const yOf = (v) => pad + (1 - (v - lo) / (hi - lo)) * (Hc - 2 * pad);
+    const dateOf = (w) => { const d = parseDay(w.day); return `${d.getDate()}. ${monthShort(w.day.slice(0, 7))}`; };
     trend = `<section class="card pad">
-      <div class="section-head" style="margin: 0 0 4px"><h2 style="font-size: 17px">Ø Puls im Training</h2><span class="small muted">letzte ${vals.length} Einheiten</span></div>
-      <svg width="100%" height="110" viewBox="0 0 320 110" preserveAspectRatio="none" role="img" aria-label="Durchschnittspuls der letzten ${vals.length} Einheiten zwischen ${Math.min(...vals)} und ${Math.max(...vals)} Schlägen pro Minute">
-        <polyline fill="none" style="stroke: var(--c-orange)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="${pts}"></polyline>
-      </svg>
-      <div class="small muted" style="display: flex; justify-content: space-between"><span>${vals[0]} bpm</span><span>${vals[vals.length - 1]} bpm</span></div>
+      <div class="section-head" style="margin: 0 0 8px"><h2 style="font-size: 17px">Ø Puls im Training</h2><span class="small muted">bpm · letzte ${vals.length} Einheiten</span></div>
+      <div class="hr-chart">
+        <div class="hr-y small muted" aria-hidden="true"><span style="top: ${((yOf(vmax) / Hc) * 100).toFixed(1)}%">${vmax}</span><span style="top: ${((yOf(vmin) / Hc) * 100).toFixed(1)}%">${vmin}</span></div>
+        <svg viewBox="0 0 ${W} ${Hc}" role="img" aria-label="Durchschnittspuls der letzten ${vals.length} Einheiten, zwischen ${vmin} und ${vmax} Schlägen pro Minute; zuletzt ${vals[vals.length - 1]}">
+          <line x1="0" x2="${W}" y1="${yOf(vmax).toFixed(1)}" y2="${yOf(vmax).toFixed(1)}" style="stroke: var(--border)" stroke-dasharray="3 4"></line>
+          <line x1="0" x2="${W}" y1="${yOf(vmin).toFixed(1)}" y2="${yOf(vmin).toFixed(1)}" style="stroke: var(--border)" stroke-dasharray="3 4"></line>
+          <polyline fill="none" style="stroke: var(--c-orange)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${xy.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' ')}"></polyline>
+          ${xy.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" style="fill: var(--surface); stroke: var(--c-orange)" stroke-width="2"></circle>`).join('')}
+        </svg>
+      </div>
+      <div class="small muted" style="display: flex; justify-content: space-between; padding-left: 36px; margin-top: 4px"><span>${dateOf(hrList[0])}</span><span>${dateOf(hrList[hrList.length - 1])}</span></div>
       <p class="hint" style="margin-top: 8px">Ein ruhigerer Puls bei gleichem Training kann ein Zeichen besserer Fitness sein – ein Trend, kein Urteil.</p>
     </section>`;
   }
