@@ -41,6 +41,7 @@ const session = {
   set(k, v) { try { sessionStorage.setItem('motivator.' + k, v); } catch { /* egal */ } }
 };
 S.cat = local.get('cat') || 'all';
+S.trainRange = Number(local.get('trainRange') || 30);
 // „Passt so“ beim Muster-Hinweis: erst wieder zeigen, wenn das Muster 4 weitere Zeiträume anhält
 S.hintSeen = (id, count) => {
   const seen = Number(local.get('hint.' + id) || 0);
@@ -90,6 +91,8 @@ function render() {
   let html;
   switch (r.name) {
     case 'habits': html = V.habitsList(S, T); break;
+    case 'training': html = r.id ? V.sessionView(S, T, r.id) : V.trainingView(S, T); break;
+    case 'steps': html = V.stepsView(S, T); break;
     case 'habit': html = V.detail(S, T, r.id); break;
     case 'new': html = V.habitForm(S, T, null); break;
     case 'edit': html = V.habitForm(S, T, r.id); break;
@@ -549,6 +552,12 @@ root.addEventListener('click', async (e) => {
 root.addEventListener('change', async (e) => {
   const el = e.target;
   const action = el.dataset && el.dataset.action;
+  if (action === 'train-range') {
+    S.trainRange = Number(el.value);
+    local.set('trainRange', el.value);
+    render();
+    return;
+  }
   if (action === 'form-change') {
     S.form = readHabitForm(el.form);
     render();

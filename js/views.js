@@ -3,8 +3,8 @@
 
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS, COLORS } from './icons.js';
 import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, parseDay } from './dates.js';
-import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint } from './stats.js';
-import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories } from './auto.js';
+import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint, isoWeek } from './stats.js';
+import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
 
 function hm(min) {
@@ -28,13 +28,14 @@ function tilesSection(S, T) {
     active: { label: 'Aktive Minuten', icon: HABIT_ICONS.run.path, color: 'orange', value: v.active.value != null ? `${v.active.value} min` : '–', sub: 'heute · mittel + intensiv' },
     distance: { label: 'Strecke', icon: HABIT_ICONS.run.path, color: 'purple', value: v.distance.value != null ? `${fmt(v.distance.value)} km` : '–', sub: 'heute' }
   };
+  const links = { steps: '#/steps', training: '#/training', active: '#/steps', distance: '#/steps' };
   const tiles = show.filter((k) => defs[k]).map((k) => {
     const d = defs[k];
-    return `<div class="card tile">
+    return `<a class="card tile" href="${links[k]}" aria-label="${d.label}: ${esc(d.value)}, Details ansehen">
       <div class="tile-head" style="color: var(--c-${d.color})">${svg(d.icon, 18)}<span>${d.label}</span></div>
       <div class="tile-val">${d.value}</div>
       <div class="small muted">${d.sub}</div>
-    </div>`;
+    </a>`;
   }).join('');
   return `<section class="tiles" aria-label="Kennzahlen">${tiles}</section>`;
 }
@@ -315,7 +316,7 @@ function trainingsSection(S, h, T) {
   if (!(h.auto_categories && h.auto_categories.length)) return '';
   const from = new Date(parseDay(T).getTime() - 30 * 86400000);
   const fromDay = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
-  const list = S.workouts.filter((w) => w.day >= fromDay && w.day <= T).sort((a, b) => (a.start_at < b.start_at ? 1 : -1));
+  const list = dedupeWorkouts(S.workouts).filter((w) => w.day >= fromDay && w.day <= T).sort((a, b) => (a.start_at < b.start_at ? 1 : -1));
   const body = list.length === 0
     ? '<p class="hint" style="padding: 14px">Noch keine Trainings von Withings in den letzten 30 Tagen.</p>'
     : list.map((w) => {
@@ -341,6 +342,188 @@ function trainingsSection(S, h, T) {
     <div class="section-head"><h2 style="font-size: 17px">Trainings</h2><span class="small muted">von Withings · 30 Tage</span></div>
     <div class="card list">${body}</div>
   </section>`;
+}
+
+// ───────────── Trainingsbereich ─────────────
+
+function dayShift(T, n) {
+  const dt = parseDay(T);
+  dt.setDate(dt.getDate() + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function backBar(href, label) {
+  return `<div class="bar"><a class="link-btn" href="${href}">${svg(UI_ICONS.back, 20, 2.2)}${label}</a><span></span></div>`;
+}
+
+function zonesBar(zones) {
+  if (!zones) return '';
+  const total = zones.reduce((s, z) => s + z.minutes, 0) || 1;
+  const cols = ['var(--z0)', 'var(--z1)', 'var(--z2)', 'var(--z3)'];
+  return `<div class="zones-bar" aria-hidden="true">${zones.map((z, i) => `<span style="width: ${(z.minutes / total) * 100}%; background: ${cols[i]}"></span>`).join('')}</div>`;
+}
+
+function sportHabit(S) {
+  return S.habits.find((h) => !h.archived && h.auto_categories && h.auto_categories.length && h.schedule === 'per_week')
+    || S.habits.find((h) => !h.archived && h.auto_categories && h.auto_categories.length);
+}
+
+export function trainingView(S, T) {
+  const range = Number(S.trainRange || 30);
+  const list = trainingList(S.workouts, dayShift(T, -(range - 1)), T);
+  const sum = trainingSummary(list);
+  const sport = sportHabit(S);
+  const goal = sport && sport.schedule === 'per_week' ? (sport.schedule_count || null) : null;
+  const mini = goal && sport.schedule_min && sport.schedule_min < goal ? sport.schedule_min : null;
+  const weeks = weeklyTrainingCounts(S.workouts, T, 8);
+  const top = Math.max(goal || 0, ...weeks.map((w) => w.count), 1);
+  const H = 110;
+  const line = (v, cls) => (v ? `<div class="goal-line ${cls}" style="bottom: ${Math.round((v / top) * H) + 20}px"></div>` : '');
+  const bars = weeks.map((w, i) => {
+    let bg = 'var(--field)';
+    if (w.running) bg = 'var(--k-blue)';
+    else if (goal && w.count >= goal) bg = 'var(--c-blue)';
+    else if (w.count >= (mini || goal || 1)) bg = 'var(--c-teal)';
+    const label = `${isoWeekOf(w.from)}`;
+    return `<div class="wbar"><div class="small" style="font-weight: 600">${w.count}</div><div class="b" style="height: ${Math.max(3, Math.round((w.count / top) * H))}px; background: ${bg}"></div><div class="small muted">${label}</div></div>`;
+  }).join('');
+  // Puls-Trend: letzte 12 Einheiten mit Puls, chronologisch
+  const hrList = trainingList(S.workouts, dayShift(T, -365), T).filter((w) => w.hr_avg).slice(0, 12).reverse();
+  let trend = '';
+  if (hrList.length >= 2) {
+    const vals = hrList.map((w) => w.hr_avg);
+    const lo = Math.min(...vals) - 3;
+    const hi = Math.max(...vals) + 3;
+    const pts = vals.map((v, i) => `${Math.round((i / (vals.length - 1)) * 316) + 2},${Math.round(98 - ((v - lo) / (hi - lo)) * 88)}`).join(' ');
+    trend = `<section class="card pad">
+      <div class="section-head" style="margin: 0 0 4px"><h2 style="font-size: 17px">Ø Puls im Training</h2><span class="small muted">letzte ${vals.length} Einheiten</span></div>
+      <svg width="100%" height="110" viewBox="0 0 320 110" preserveAspectRatio="none" role="img" aria-label="Durchschnittspuls der letzten ${vals.length} Einheiten zwischen ${Math.min(...vals)} und ${Math.max(...vals)} Schlägen pro Minute">
+        <polyline fill="none" style="stroke: var(--c-orange)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="${pts}"></polyline>
+      </svg>
+      <div class="small muted" style="display: flex; justify-content: space-between"><span>${vals[0]} bpm</span><span>${vals[vals.length - 1]} bpm</span></div>
+      <p class="hint" style="margin-top: 8px">Ein ruhigerer Puls bei gleichem Training kann ein Zeichen besserer Fitness sein – ein Trend, kein Urteil.</p>
+    </section>`;
+  }
+  const rows = list.length === 0
+    ? '<p class="hint" style="padding: 14px">In diesem Zeitraum keine Trainings.</p>'
+    : list.map((w) => {
+      const dt = parseDay(w.day);
+      return `<a class="row" href="#/training/${encodeURIComponent(w.id)}" style="text-decoration: none; color: inherit">
+        <div class="wo-date"><div class="small muted" style="font-weight: 600">${WEEKDAYS_SHORT[(dt.getDay() + 6) % 7]}</div><div style="font-size: 18px; font-weight: 700">${dt.getDate()}.</div></div>
+        <div class="row-main"><div class="row-title"><span>${esc(categoryName(w.category))}</span></div>
+          <div class="row-sub">${timeOf(w.start_at)} · ${Math.round(w.duration_min)} Min${w.hr_avg ? ` · Ø ${w.hr_avg} bpm` : ''}${w.calories != null ? ` · ${Math.round(w.calories)} kcal` : ''}</div>
+          ${zonesBar(heartZones(w))}
+        </div>
+        <span class="muted" style="transform: rotate(180deg); display: flex">${svg(UI_ICONS.back, 18)}</span>
+      </a>`;
+    }).join('');
+  const seg = [7, 30, 90].map((r) => `<label><input type="radio" name="trange" value="${r}"${range === r ? ' checked' : ''} data-action="train-range"><span>${r} Tage</span></label>`).join('');
+  return `<div class="app">
+    ${backBar('#/', 'Übersicht')}
+    <div class="wrap" style="gap: 14px">
+      <h1 style="font-size: 28px; padding: 0 4px">Training</h1>
+      <div class="seg" role="radiogroup" aria-label="Zeitraum">${seg}</div>
+      <section class="stat3">
+        <div class="card"><div class="small muted">Trainings</div><b>${sum.count}</b></div>
+        <div class="card"><div class="small muted">Zeit</div><b>${sum.minutes ? (sum.minutes >= 60 ? `${Math.floor(sum.minutes / 60)}:${String(sum.minutes % 60).padStart(2, '0')} h` : `${sum.minutes} min`) : '–'}</b></div>
+        <div class="card"><div class="small muted">Ø Puls</div><b>${sum.hr ?? '–'}</b></div>
+      </section>
+      <section class="card pad">
+        <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">Trainings pro Woche</h2><span class="small muted">${goal ? `Ziel ${goal}${mini ? ` · Mini ${mini}` : ''}` : 'Tage mit Training'}</span></div>
+        <div class="wbars" style="height: ${H + 40}px">${line(goal, 'goal')}${line(mini, 'mini')}${bars}</div>
+        <div class="small muted" style="text-align: center; margin-top: 4px">Kalenderwoche</div>
+        ${goal ? `<div class="cal-legend"><span><i class="dash goal"></i>Ziel</span>${mini ? '<span><i class="dash mini"></i>Mini-Woche</span>' : ''}</div>` : ''}
+      </section>
+      ${trend}
+      <div class="section-head"><h2>Einheiten</h2><span class="small muted">Gehen ausgeblendet</span></div>
+      <div class="card list">${rows}</div>
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
+function isoWeekOf(day) {
+  return isoWeek(day);
+}
+
+export function sessionView(S, T, id) {
+  const w = S.workouts.find((x) => String(x.id) === String(id));
+  if (!w) return notFound();
+  const dt = parseDay(w.day);
+  const zones = heartZones(w);
+  const counts = S.habits.filter((h) => !h.archived && h.auto_categories && h.auto_categories.length && workoutCounts(h, w));
+  const autoDone = counts.filter((h) => { const l = logOf(S.idx, h.id, w.day); return l && l.source === 'withings'; });
+  const chips = [
+    ...autoDone.map((h) => `<span class="pill auto">${esc(h.name)} automatisch abgehakt</span>`),
+    ...counts.filter((h) => !autoDone.includes(h)).map((h) => `<span class="pill goal">zählt für ${esc(h.name)}</span>`),
+    '<span class="pill pause">Withings</span>'
+  ].join('');
+  const maxZ = zones ? Math.max(...zones.map((z) => z.minutes), 1) : 1;
+  const zcols = ['var(--z0)', 'var(--z1)', 'var(--z2)', 'var(--z3)'];
+  return `<div class="app">
+    ${backBar('#/training', 'Training')}
+    <div class="wrap" style="gap: 14px">
+      <div style="padding: 0 4px">
+        <h1 style="font-size: 28px">${esc(categoryName(w.category))}</h1>
+        <div class="small muted" style="font-size: 14px; margin-top: 2px">${longDate(w.day)} · ${timeOf(w.start_at)}–${timeOf(w.end_at)}</div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px">${chips}</div>
+      </div>
+      <section class="stat-grid">
+        <div class="card stat"><div class="small muted">Dauer</div><div class="num">${Math.round(w.duration_min)} Min</div></div>
+        <div class="card stat"><div class="small muted">Kalorien</div><div class="num">${w.calories != null ? Math.round(w.calories) + ' kcal' : '–'}</div></div>
+        <div class="card stat"><div class="small muted">Ø Puls</div><div class="num">${w.hr_avg ?? '–'}</div></div>
+        <div class="card stat"><div class="small muted">Max. Puls</div><div class="num">${w.hr_max ?? '–'}</div></div>
+      </section>
+      ${zones ? `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="font-size: 17px">Pulszonen</h2>
+        ${zones.map((z, i) => `<div class="zone-row"><span>${z.label}</span><div class="zone-track"><div style="width: ${(z.minutes / maxZ) * 100}%; background: ${zcols[i]}"></div></div><b>${z.minutes} Min</b></div>`).join('')}
+      </section>` : ''}
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <div class="section-head"><h2 style="font-size: 17px">Übungen</h2><span class="small muted">aus Alpha Progression</span></div>
+        <div class="card pad" style="border-style: dashed"><p class="hint">Kommt mit dem Alpha-Progression-Import – die Einheit wird dann über die Uhrzeit zugeordnet.</p></div>
+      </section>
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
+export function stepsView(S, T) {
+  const habit = S.habits.find((h) => !h.archived && h.auto_metric === 'steps');
+  const goal = habit && habit.target ? habit.target : null;
+  const s = stepsSummary(S.activity, T, 30, goal);
+  const top = Math.max(goal || 0, ...s.list.map((x) => x.steps || 0), 1);
+  const H = 150;
+  const bars = s.list.map((x) => {
+    const today = x.day === T;
+    let bg = 'var(--field)';
+    if (x.steps != null && goal && x.steps >= goal) bg = 'var(--c-teal)';
+    else if (x.steps != null && !goal) bg = 'var(--c-teal)';
+    if (today) bg = 'var(--k-teal)';
+    return `<span title="${x.day}: ${x.steps ?? '–'}" style="height: ${x.steps ? Math.max(2, Math.round((x.steps / top) * H)) : 2}px; background: ${bg}"></span>`;
+  }).join('');
+  const first = parseDay(s.list[0].day);
+  return `<div class="app">
+    ${backBar('#/', 'Übersicht')}
+    <div class="wrap" style="gap: 14px">
+      <h1 style="font-size: 28px; padding: 0 4px">Schritte</h1>
+      <section class="stat3">
+        <div class="card"><div class="small muted">Heute</div><b>${s.today != null ? fmt(s.today) : '–'}</b></div>
+        <div class="card"><div class="small muted">Ø 30 Tage</div><b>${s.avg != null ? fmt(s.avg) : '–'}</b></div>
+        <div class="card"><div class="small muted">Bester Tag</div><b>${s.best ? fmt(s.best.steps) : '–'}</b></div>
+      </section>
+      <section class="card pad">
+        <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">Letzte 30 Tage</h2><span class="small muted">${goal ? `Linie = dein Ziel ${fmt(goal)}` : ''}</span></div>
+        <div class="sbars" style="height: ${H}px">${goal ? `<div class="goal-line mini" style="bottom: ${Math.round((goal / top) * H)}px"></div>` : ''}${bars}</div>
+        <div class="small muted" style="display: flex; justify-content: space-between; margin-top: 6px"><span>${first.getDate()}. ${monthShort(s.list[0].day.slice(0, 7))}</span><span>heute</span></div>
+      </section>
+      ${s.daysKnown ? `<section class="total" style="flex-direction: column; align-items: flex-start; gap: 2px">
+        ${goal ? `<div class="big">${s.daysOverGoal} von ${s.daysKnown} Tagen über ${fmt(goal)}</div>` : ''}
+        <div class="small">Zusammen ${fmt(s.total)} Schritte${s.km ? ` – etwa ${fmt(s.km)} km` : ''}.</div>
+      </section>` : ''}
+      ${goal ? '' : '<p class="hint" style="padding: 0 4px">Tipp: Leg eine Gewohnheit „Schritte“ an und wähle „Wert von Withings übernehmen: Schritte“ – dann siehst du hier dein Ziel.</p>'}
+    </div>
+    ${nav('overview')}
+  </div>`;
 }
 
 function periodsCard(h, periods, col) {

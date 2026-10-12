@@ -99,6 +99,115 @@ function addDaysStr(day, n) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
+// ───────────── Trainings aufbereiten ─────────────
+
+const UNSPECIFIC = new Set([36, 272]); // Sonstiges, Multisport
+
+function specificity(w) {
+  if (UNSPECIFIC.has(w.category)) return 0;
+  if (WALKING.has(w.category)) return 1;
+  return 2;
+}
+
+// Gleichzeitige Trainings (z. B. Uhr erkennt „Sonstiges“ und du startest „Krafttraining“) nur einmal zählen:
+// Überlappen sich zwei um mehr als die Hälfte der kürzeren Dauer, bleibt das mit der genaueren Art (bei Gleichstand das längere).
+export function dedupeWorkouts(workouts) {
+  const list = workouts.slice().sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
+  const keep = [];
+  for (const w of list) {
+    const ws = new Date(w.start_at).getTime();
+    const we = new Date(w.end_at).getTime();
+    let replaced = false;
+    let dropped = false;
+    for (let i = 0; i < keep.length; i += 1) {
+      const k = keep[i];
+      const ks = new Date(k.start_at).getTime();
+      const ke = new Date(k.end_at).getTime();
+      const overlap = Math.min(we, ke) - Math.max(ws, ks);
+      const shorter = Math.max(1, Math.min(we - ws, ke - ks));
+      if (!Number.isFinite(overlap) || overlap <= shorter / 2) continue;
+      const better = specificity(w) > specificity(k) || (specificity(w) === specificity(k) && w.duration_min > k.duration_min);
+      if (better) { keep[i] = w; replaced = true; } else { dropped = true; }
+      break;
+    }
+    if (!replaced && !dropped) keep.push(w);
+  }
+  return keep;
+}
+
+// Trainings ohne Gehen, ohne Doppelte, neueste zuerst
+export function trainingList(workouts, fromDay, toDay) {
+  return dedupeWorkouts(workouts)
+    .filter((w) => w.day >= fromDay && w.day <= toDay && !WALKING.has(w.category))
+    .sort((a, b) => (a.start_at < b.start_at ? 1 : -1));
+}
+
+export function trainingSummary(list) {
+  const minutes = list.reduce((s, w) => s + Number(w.duration_min || 0), 0);
+  const withHr = list.filter((w) => w.hr_avg);
+  const hr = withHr.length ? Math.round(withHr.reduce((s, w) => s + w.hr_avg, 0) / withHr.length) : null;
+  return { count: list.length, minutes: Math.round(minutes), hr };
+}
+
+// Trainings pro Kalenderwoche (Mo–So), älteste zuerst
+export function weeklyTrainingCounts(workouts, today, weeks = 8) {
+  const [y, m, d] = today.split('-').map(Number);
+  const t = new Date(y, m - 1, d, 12);
+  const monday = new Date(t);
+  monday.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+  const out = [];
+  for (let i = weeks - 1; i >= 0; i -= 1) {
+    const start = new Date(monday);
+    start.setDate(monday.getDate() - i * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const from = fmtDay(start);
+    const to = fmtDay(end);
+    const days = new Set(trainingList(workouts, from, to).map((w) => w.day));
+    out.push({ from, to, count: days.size, running: i === 0 });
+  }
+  return out;
+}
+
+function fmtDay(dt) {
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+// Pulszonen in Minuten, falls die Uhr sie liefert (Withings: hr_zone_0…3 in Sekunden)
+export function heartZones(w) {
+  const d = w.data || {};
+  const keys = ['hr_zone_0', 'hr_zone_1', 'hr_zone_2', 'hr_zone_3'];
+  if (!keys.some((k) => d[k] != null && Number(d[k]) > 0)) return null;
+  const labels = ['Leicht', 'Moderat', 'Intensiv', 'Maximal'];
+  return keys.map((k, i) => ({ label: labels[i], minutes: Math.round((Number(d[k]) || 0) / 60) }));
+}
+
+// Schritte der letzten n Tage (älteste zuerst) + Auswertung
+export function stepsSummary(activity, today, days = 30, goal = null) {
+  const byDay = new Map(activity.map((a) => [a.day, a]));
+  const list = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const day = addDaysStr(today, -i);
+    const a = byDay.get(day);
+    list.push({ day, steps: a && a.steps != null ? a.steps : null, distance_m: a ? a.distance_m : null });
+  }
+  const known = list.filter((x) => x.steps != null);
+  const past = known.filter((x) => x.day < today);
+  const total = known.reduce((s, x) => s + x.steps, 0);
+  const km = Math.round(known.reduce((s, x) => s + (Number(x.distance_m) || 0), 0) / 1000);
+  const best = known.reduce((b, x) => (!b || x.steps > b.steps ? x : b), null);
+  return {
+    list,
+    today: (byDay.get(today) || {}).steps ?? null,
+    avg: past.length ? Math.round(past.reduce((s, x) => s + x.steps, 0) / past.length) : null,
+    best,
+    total,
+    km,
+    daysOverGoal: goal ? known.filter((x) => x.steps >= goal).length : null,
+    daysKnown: known.length
+  };
+}
+
 // Kacheln
 export function tileValues({ activity, workouts, today }) {
   const byDay = new Map(activity.map((a) => [a.day, a]));
@@ -109,8 +218,7 @@ export function tileValues({ activity, workouts, today }) {
     const a = byDay.get(addDaysStr(today, -i));
     if (a && a.steps != null) { sum += a.steps; n += 1; }
   }
-  const from7 = addDaysStr(today, -6);
-  const recent = workouts.filter((w) => w.day >= from7 && w.day <= today && !WALKING.has(w.category));
+  const recent = trainingList(workouts, addDaysStr(today, -6), today);
   const minutes = recent.reduce((s, w) => s + Number(w.duration_min || 0), 0);
   return {
     steps: { value: t.steps ?? null, avg7: n ? Math.round(sum / n) : null },

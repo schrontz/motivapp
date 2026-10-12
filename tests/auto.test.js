@@ -1,6 +1,40 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { autoLogChanges, matchesCategories, categoryName, tileValues } from '../js/auto.js';
+import { autoLogChanges, matchesCategories, categoryName, tileValues, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from '../js/auto.js';
+
+const w = (id, day, start, mins, category, extra = {}) => {
+  const s = new Date(`${day}T${start}:00`);
+  return { id, day, start_at: s.toISOString(), end_at: new Date(s.getTime() + mins * 60000).toISOString(), duration_min: mins, category, ...extra };
+};
+
+test('Gleichzeitige Trainings zählen nur einmal – die genauere Art gewinnt', () => {
+  const list = [
+    w('a', '2026-10-12', '18:00', 55, 36),              // Sonstiges (automatisch erkannt)
+    w('b', '2026-10-12', '18:03', 52, 16),              // Krafttraining (selbst gestartet)
+    w('c', '2026-10-12', '12:40', 24, 1),               // Gehen mittags – überlappt nicht
+    w('d', '2026-10-13', '18:00', 50, 16)
+  ];
+  assert.deepEqual(dedupeWorkouts(list).map((x) => x.id).sort(), ['b', 'c', 'd']);
+  assert.deepEqual(trainingList(list, '2026-10-12', '2026-10-13').map((x) => x.id), ['d', 'b'], 'Gehen ausgeblendet, neueste zuerst');
+});
+
+test('Zusammenfassung, Wochen, Zonen, Schritte', () => {
+  const list = [w('b', '2026-10-12', '18:00', 52, 16, { hr_avg: 118 }), w('d', '2026-10-13', '18:00', 48, 16, { hr_avg: 120 })];
+  assert.deepEqual(trainingSummary(list), { count: 2, minutes: 100, hr: 119 });
+  const weeks = weeklyTrainingCounts([...list, w('x', '2026-10-05', '18:00', 50, 16)], '2026-10-13', 3);
+  assert.deepEqual(weeks.map((x) => `${x.from}:${x.count}`), ['2026-09-28:0', '2026-10-05:1', '2026-10-12:2']);
+  assert.equal(weeks[2].running, true);
+  assert.equal(heartZones({ data: {} }), null);
+  assert.deepEqual(heartZones({ data: { hr_zone_0: 360, hr_zone_1: 1020, hr_zone_2: 1260, hr_zone_3: 480 } }).map((z) => z.minutes), [6, 17, 21, 8]);
+  const act = [{ day: '2026-10-11', steps: 8000, distance_m: 6000 }, { day: '2026-10-12', steps: 6000, distance_m: 4500 }, { day: '2026-10-13', steps: 3000, distance_m: 2200 }];
+  const s = stepsSummary(act, '2026-10-13', 30, 7000);
+  assert.equal(s.list.length, 30);
+  assert.equal(s.today, 3000);
+  assert.equal(s.avg, 7000, 'Schnitt ohne den laufenden Tag');
+  assert.equal(s.best.steps, 8000);
+  assert.equal(s.daysOverGoal, 1);
+  assert.equal(s.km, 13);
+});
 
 const TODAY = '2026-10-13';
 const sport = { id: 's', kind: 'check', auto_categories: [16, 17], auto_min_minutes: 20, start_day: '2026-10-13', archived: false };

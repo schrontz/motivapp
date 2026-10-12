@@ -244,7 +244,10 @@ const demo = (() => {
     if ([1, 3, 5].includes(wd) || i === 0) {
       const startAt = new Date(d + (i === 0 ? 'T07:30:00' : 'T18:05:00'));
       const mins = 45 + Math.round(rnd() * 12);
-      workouts.push({ id: 'w' + i, ext_id: 'w' + i, day: d, start_at: startAt.toISOString(), end_at: new Date(startAt.getTime() + mins * 60000).toISOString(), category: 16, duration_min: mins, calories: 280 + Math.round(rnd() * 60), hr_avg: 112 + Math.round(rnd() * 12), hr_max: 145 + Math.round(rnd() * 15), data: {} });
+      const z = mins * 60;
+      workouts.push({ id: 'w' + i, ext_id: 'w' + i, day: d, start_at: startAt.toISOString(), end_at: new Date(startAt.getTime() + mins * 60000).toISOString(), category: 16, duration_min: mins, calories: 280 + Math.round(rnd() * 60), hr_avg: 112 + Math.round(rnd() * 12), hr_max: 145 + Math.round(rnd() * 15), data: { hr_zone_0: Math.round(z * 0.12), hr_zone_1: Math.round(z * 0.33), hr_zone_2: Math.round(z * 0.4), hr_zone_3: Math.round(z * 0.15) } });
+      // wie bei Jans Uhr: gleichzeitig automatisch erkanntes „Sonstiges“ – darf nicht doppelt zählen
+      if (i % 3 === 0) workouts.push({ id: 's' + i, ext_id: 's' + i, day: d, start_at: new Date(startAt.getTime() - 120000).toISOString(), end_at: new Date(startAt.getTime() + (mins + 2) * 60000).toISOString(), category: 36, duration_min: mins + 4, calories: 300, hr_avg: 114, hr_max: 150, data: {} });
     }
     if (rnd() < 0.4) {
       const startAt = new Date(d + 'T12:40:00');

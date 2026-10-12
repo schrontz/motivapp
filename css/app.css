@@ -139,6 +139,28 @@ h1, h2, h3, p { margin: 0; }
 .hint-card p { font-size: 14px; line-height: 1.45; }
 .hint-card .btn { height: 44px; font-size: 14px; }
 .pill.auto { background: var(--k-purple); color: var(--c-purple); }
+:root { --z0: #9FD3C7; --z1: #4FB39E; --z2: #E9A46A; --z3: #C2620F; }
+a.tile { text-decoration: none; color: inherit; display: block; }
+a.tile:active { transform: scale(0.98); }
+.stat3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat3 .card { padding: 12px; border-radius: 18px; }
+.stat3 b { display: block; font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.wbars { position: relative; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.wbar { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
+.wbar .b { width: 100%; border-radius: 6px; }
+.goal-line { position: absolute; left: 0; right: 0; border-top: 1.5px dashed; z-index: 0; }
+.goal-line.goal { border-color: var(--c-blue); opacity: 0.55; }
+.goal-line.mini { border-color: var(--c-teal); opacity: 0.6; }
+.dash { display: inline-block; width: 14px; border-top: 1.5px dashed; }
+.dash.goal { border-color: var(--c-blue); }
+.dash.mini { border-color: var(--c-teal); }
+.sbars { position: relative; display: flex; gap: 3px; align-items: flex-end; }
+.sbars span { flex: 1; border-radius: 3px; position: relative; z-index: 1; }
+.zones-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.zone-row { display: grid; grid-template-columns: 76px 1fr 56px; align-items: center; gap: 10px; font-size: 14px; }
+.zone-row b { text-align: right; font-weight: 600; }
+.zone-track { height: 10px; border-radius: 5px; background: var(--bg); overflow: hidden; }
+.zone-track div { height: 10px; border-radius: 5px; }
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .tile { padding: 14px; }
 .tile-head { display: flex; align-items: center; gap: 8px; }
