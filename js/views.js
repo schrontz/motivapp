@@ -6,6 +6,27 @@ import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, pa
 import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint, isoWeek } from './stats.js';
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
+import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview } from './strength.js';
+
+// Alpha Progression eingeschaltet (und Datenbank-Update 004 da)?
+export function alphaOn(S) {
+  return !!(S.hasStrengthSchema && S.profile && (S.profile.modules || []).includes('alpha'));
+}
+
+// Trainings für alle Ansichten: mit Alpha zusammengeführt, sonst nur Withings
+function trainings(S) {
+  if (!alphaOn(S)) return S.workouts;
+  if (S._mergedFor !== S.workouts || S._mergedStrength !== S.strength) {
+    S._merged = mergeTrainings(S.workouts, S.strength || []);
+    S._mergedFor = S.workouts;
+    S._mergedStrength = S.strength;
+  }
+  return S._merged;
+}
+
+function kgTxt(n) {
+  return String(Math.round(Number(n) * 100) / 100).replace('.', ',');
+}
 
 function hm(min) {
   const h = Math.floor(min / 60);
@@ -21,7 +42,7 @@ function tilesSection(S, T) {
   const show = (S.profile && S.profile.tiles) || ['steps', 'training'];
   if (!(S.withings && S.withings.connected) && !S.activity.length) return '';
   if (!show.length) return '';
-  const v = tileValues({ activity: S.activity, workouts: S.workouts, today: T });
+  const v = tileValues({ activity: S.activity, workouts: trainings(S), today: T });
   const defs = {
     steps: { label: 'Schritte', icon: HABIT_ICONS.steps.path, color: 'teal', value: v.steps.value != null ? fmt(v.steps.value) : '–', sub: v.steps.avg7 != null ? `heute · Ø 7 Tage ${fmt(v.steps.avg7)}` : 'heute' },
     training: { label: 'Training', icon: HABIT_ICONS.dumbbell.path, color: 'blue', value: `${v.training.count}×`, sub: `letzte 7 Tage${v.training.minutes ? ' · ' + hm(v.training.minutes) : ''}` },
@@ -370,12 +391,13 @@ function sportHabit(S) {
 
 export function trainingView(S, T) {
   const range = Number(S.trainRange || 30);
-  const list = trainingList(S.workouts, dayShift(T, -(range - 1)), T);
+  const all = trainings(S);
+  const list = trainingList(all, dayShift(T, -(range - 1)), T);
   const sum = trainingSummary(list);
   const sport = sportHabit(S);
   const goal = sport && sport.schedule === 'per_week' ? (sport.schedule_count || null) : null;
   const mini = goal && sport.schedule_min && sport.schedule_min < goal ? sport.schedule_min : null;
-  const weeks = weeklyTrainingCounts(S.workouts, T, 8);
+  const weeks = weeklyTrainingCounts(all, T, 8);
   const top = Math.max(goal || 0, ...weeks.map((w) => w.count), 1);
   const H = 110;
   const line = (v, cls) => (v ? `<div class="goal-line ${cls}" style="bottom: ${Math.round((v / top) * H) + 20}px"></div>` : '');
@@ -423,8 +445,8 @@ export function trainingView(S, T) {
       const dt = parseDay(w.day);
       return `<a class="row" href="#/training/${encodeURIComponent(w.id)}" style="text-decoration: none; color: inherit">
         <div class="wo-date"><div class="small muted" style="font-weight: 600">${WEEKDAYS_SHORT[(dt.getDay() + 6) % 7]}</div><div style="font-size: 18px; font-weight: 700">${dt.getDate()}.</div></div>
-        <div class="row-main"><div class="row-title"><span>${esc(categoryName(w.category))}</span></div>
-          <div class="row-sub">${timeOf(w.start_at)} · ${Math.round(w.duration_min)} Min${w.hr_avg ? ` · Ø ${w.hr_avg} bpm` : ''}${w.calories != null ? ` · ${Math.round(w.calories)} kcal` : ''}</div>
+        <div class="row-main"><div class="row-title"><span>${esc(w.strength ? w.strength.title : categoryName(w.category))}</span></div>
+          <div class="row-sub">${timeOf(w.start_at)} · ${Math.round(w.duration_min)} Min${w.hr_avg ? ` · Ø ${w.hr_avg} bpm` : ''}${w.calories != null ? ` · ${Math.round(w.calories)} kcal` : ''}${w.strength ? ` · ${w.strength.exercises.length} Übungen` : ''}${w.alphaOnly ? ' · nur Alpha' : ''}</div>
           ${zonesBar(heartZones(w))}
         </div>
         <span class="muted" style="transform: rotate(180deg); display: flex">${svg(UI_ICONS.back, 18)}</span>
@@ -434,7 +456,7 @@ export function trainingView(S, T) {
   return `<div class="app">
     ${backBar('#/', 'Übersicht')}
     <div class="wrap" style="gap: 14px">
-      <h1 style="font-size: 28px; padding: 0 4px">Training</h1>
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px"><h1 style="font-size: 28px">Training</h1>${alphaOn(S) ? '<a class="link-btn" href="#/import">Alpha importieren</a>' : ''}</div>
       <div class="seg" role="radiogroup" aria-label="Zeitraum">${seg}</div>
       <section class="stat3">
         <div class="card"><div class="small muted">Trainings</div><b>${sum.count}</b></div>
@@ -460,41 +482,280 @@ function isoWeekOf(day) {
 }
 
 export function sessionView(S, T, id) {
-  const w = S.workouts.find((x) => String(x.id) === String(id));
+  const w = trainings(S).find((x) => String(x.id) === String(id));
   if (!w) return notFound();
-  const dt = parseDay(w.day);
+  const st = w.strength || null;
   const zones = heartZones(w);
-  const counts = S.habits.filter((h) => !h.archived && h.auto_categories && h.auto_categories.length && workoutCounts(h, w));
+  const counts = w.alphaOnly ? [] : S.habits.filter((h) => !h.archived && h.auto_categories && h.auto_categories.length && workoutCounts(h, w));
   const autoDone = counts.filter((h) => { const l = logOf(S.idx, h.id, w.day); return l && l.source === 'withings'; });
   const chips = [
     ...autoDone.map((h) => `<span class="pill auto">${esc(h.name)} automatisch abgehakt</span>`),
     ...counts.filter((h) => !autoDone.includes(h)).map((h) => `<span class="pill goal">zählt für ${esc(h.name)}</span>`),
-    '<span class="pill pause">Withings</span>'
+    `<span class="pill pause">${st ? (w.alphaOnly ? 'Alpha Progression' : 'Alpha Progression + Withings') : 'Withings'}</span>`
   ].join('');
   const maxZ = zones ? Math.max(...zones.map((z) => z.minutes), 1) : 1;
   const zcols = ['var(--z0)', 'var(--z1)', 'var(--z2)', 'var(--z3)'];
+  const vol = st ? volume(st) : 0;
+  const volTxt = vol >= 1000 ? `${kgTxt(Math.round(vol / 100) / 10)} t` : `${vol} kg`;
+  const stat = (label, value) => `<div class="card stat"><div class="small muted">${label}</div><div class="num">${value}</div></div>`;
+  let stats;
+  if (st && w.alphaOnly) {
+    const nSets = st.exercises.reduce((s, e) => s + e.sets.length, 0);
+    stats = stat('Dauer', `${Math.round(w.duration_min)} Min`) + stat('Volumen', vol ? volTxt : '–') + stat('Übungen', st.exercises.length) + stat('Sätze', nSets);
+  } else if (st) {
+    stats = stat('Dauer', `${Math.round(w.duration_min)} Min`) + stat('Ø Puls', w.hr_avg ?? '–') + stat('Kalorien', w.calories != null ? Math.round(w.calories) + ' kcal' : '–') + stat('Volumen', vol ? volTxt : '–');
+  } else {
+    stats = stat('Dauer', `${Math.round(w.duration_min)} Min`) + stat('Kalorien', w.calories != null ? Math.round(w.calories) + ' kcal' : '–') + stat('Ø Puls', w.hr_avg ?? '–') + stat('Max. Puls', w.hr_max ?? '–');
+  }
+  let exercises = '';
+  if (st) {
+    const cards = st.exercises.map((e) => {
+      const key = exerciseKey(e);
+      const hist = exerciseHistory(S.strength, key);
+      const idx = hist.findIndex((h) => h.session.id === st.id);
+      const entry = hist[idx];
+      const plan = (S.plans || []).find((p) => exerciseKey({ name: p.exercise, equipment: p.equipment }) === key);
+      const tgt = entry ? sessionTarget(plan, hist, entry, T) : null;
+      const pill = tgt
+        ? (tgt.ok ? `<span class="pill">Ziel ${tgt.reps} · erreicht</span>` : `<span class="pill pause">Ziel ${tgt.reps} · diesmal nicht</span>`)
+        : '';
+      const rm = bestOneRm(e);
+      let rmLine = '';
+      if (rm != null) {
+        const prev = idx > 0 ? bestOneRm(hist[idx - 1].ex) : null;
+        const prevKg = idx > 0 ? Math.max(...hist[idx - 1].ex.sets.map((x) => x.kg ?? 0)) : null;
+        const kgNow = Math.max(...e.sets.map((x) => x.kg ?? 0));
+        let delta = '';
+        if (prevKg != null && kgNow > prevKg) delta = ' · neues Gewicht';
+        else if (prev != null && rm !== prev) delta = ` · ${rm > prev ? '+' : '−'}${kgTxt(Math.abs(Math.round((rm - prev) * 10) / 10))} zum letzten Mal`;
+        rmLine = `<div class="small muted" style="margin-top: 8px">geschätzte Kraft (1RM): ${kgTxt(rm)} kg${delta}</div>`;
+      }
+      const setCells = e.sets.map((x, i) => `<div class="set-cell"><div class="small muted">Satz ${i + 1}</div><b>${esc(setsText({ ...e, sets: [x] }).replace(/^1 × /, ''))}</b></div>`).join('');
+      return `<a class="card ex-card" href="#/exercise/${encodeURIComponent(key)}">
+        <div class="ex-head"><div><div class="ex-name">${esc(e.name)}</div><div class="small muted">${esc(e.equipment || '')}</div></div>${pill}</div>
+        <div class="set-grid">${setCells}</div>
+        ${rmLine}
+      </a>`;
+    }).join('');
+    exercises = `<section style="display: flex; flex-direction: column; gap: 10px">
+        <div class="section-head"><h2 style="font-size: 17px">Übungen</h2><span class="small muted">antippen für Verlauf</span></div>
+        ${cards || '<p class="hint" style="padding: 0 4px">Keine Übungen in dieser Einheit.</p>'}
+      </section>`;
+  } else if (alphaOn(S) && [16, 17].includes(w.category)) {
+    exercises = `<section style="display: flex; flex-direction: column; gap: 10px">
+        <div class="section-head"><h2 style="font-size: 17px">Übungen</h2></div>
+        <div class="card pad" style="display: flex; flex-direction: column; gap: 10px"><p class="hint">Keine passende Einheit aus Alpha Progression gefunden (Startzeit ±20 Minuten).</p><a class="btn ghost" href="#/import">Alpha-Trainings importieren</a></div>
+      </section>`;
+  }
+  const title = st ? st.title : categoryName(w.category);
   return `<div class="app">
     ${backBar('#/training', 'Training')}
     <div class="wrap" style="gap: 14px">
       <div style="padding: 0 4px">
-        <h1 style="font-size: 28px">${esc(categoryName(w.category))}</h1>
-        <div class="small muted" style="font-size: 14px; margin-top: 2px">${longDate(w.day)} · ${timeOf(w.start_at)}–${timeOf(w.end_at)}</div>
+        <h1 style="font-size: 28px">${esc(title)}</h1>
+        <div class="small muted" style="font-size: 14px; margin-top: 2px">${longDate(w.day)} · ${timeOf(w.start_at)}–${timeOf(w.end_at)}${st && st.program ? ` · ${esc(st.program)}` : ''}</div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px">${chips}</div>
       </div>
-      <section class="stat-grid">
-        <div class="card stat"><div class="small muted">Dauer</div><div class="num">${Math.round(w.duration_min)} Min</div></div>
-        <div class="card stat"><div class="small muted">Kalorien</div><div class="num">${w.calories != null ? Math.round(w.calories) + ' kcal' : '–'}</div></div>
-        <div class="card stat"><div class="small muted">Ø Puls</div><div class="num">${w.hr_avg ?? '–'}</div></div>
-        <div class="card stat"><div class="small muted">Max. Puls</div><div class="num">${w.hr_max ?? '–'}</div></div>
-      </section>
+      <section class="stat-grid">${stats}</section>
       ${zones ? `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
         <h2 style="font-size: 17px">Pulszonen</h2>
         ${zones.map((z, i) => `<div class="zone-row"><span>${z.label}</span><div class="zone-track"><div style="width: ${(z.minutes / maxZ) * 100}%; background: ${zcols[i]}"></div></div><b>${z.minutes} Min</b></div>`).join('')}
       </section>` : ''}
-      <section style="display: flex; flex-direction: column; gap: 10px">
-        <div class="section-head"><h2 style="font-size: 17px">Übungen</h2><span class="small muted">aus Alpha Progression</span></div>
-        <div class="card pad" style="border-style: dashed"><p class="hint">Kommt mit dem Alpha-Progression-Import – die Einheit wird dann über die Uhrzeit zugeordnet.</p></div>
+      ${exercises}
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
+// ───────────── Übung, Steigerung, Import ─────────────
+
+function planOf(S, key) {
+  return (S.plans || []).find((p) => exerciseKey({ name: p.exercise, equipment: p.equipment }) === key) || null;
+}
+
+function ladderChips(items) {
+  return `<div class="ladder">${items.map((l) => `<span data-state="${l.state}">${esc(l.txt)}</span>`).join('')}</div>`;
+}
+
+function shortDate(day) {
+  const d = parseDay(day);
+  return `${d.getDate()}. ${monthShort(day.slice(0, 7))}`;
+}
+
+export function exerciseView(S, T, key) {
+  const hist = exerciseHistory(S.strength || [], key);
+  if (!hist.length) return notFound();
+  const { name, equipment } = splitKey(key);
+  const last = hist[hist.length - 1];
+  const kind = last.ex.kind;
+  const plan = planOf(S, key);
+  const first = hist[0].day;
+  let planCard = '';
+  if (plan) {
+    const r = progress(plan, hist, T);
+    const c = r.current;
+    let sub;
+    if (c.done) sub = `Diese Woche geschafft. Nächste Woche: ${r.next.reps}${r.next.kg !== c.kg ? ` bei ${kgTxt(r.next.kg)} kg` : ''}${r.next.consolidating ? ' (festigen)' : ''}.`;
+    else if (c.consolidating) sub = 'Festigungswoche: gleiche Zahl wie letzte Woche.';
+    else if (c.reps === Number(plan.start_reps) && c.kg > Number(plan.kg)) sub = 'Neues Gewicht – darum wieder ab Start.';
+    else sub = r.weeks.size > 1 ? 'Neue Stufe.' : 'Erste Woche mit diesem Plan.';
+    planCard = `<section class="plan-card">
+      <div class="small" style="font-weight: 600">Ziel diese Woche</div>
+      <div class="plan-big">${c.sets} × ${c.reps} bei ${kgTxt(c.kg)} kg</div>
+      <div class="small">${sub}</div>
+      ${ladderChips(r.ladder)}
+      <div class="small">Noch etwa ${r.weeksToNextKg} ${r.weeksToNextKg === 1 ? 'Woche' : 'Wochen'} bis ${kgTxt(r.ladder[r.ladder.length - 1].kg)} kg.</div>
+    </section>`;
+  } else if (kind === 'kg_reps') {
+    planCard = `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+      <b>Noch kein Steigerungsplan</b>
+      <p class="hint">Zum Beispiel: alle 2 Wochen 2 Wiederholungen mehr – und bei 40 mehr Gewicht.</p>
+      <a class="btn ghost" href="#/plan/${encodeURIComponent(key)}">Steigerung einrichten</a>
+    </section>`;
+  }
+  // 1RM-Verlauf
+  let chart = '';
+  const pts = hist.map((h) => ({ day: h.day, rm: bestOneRm(h.ex), kg: Math.max(...h.ex.sets.map((x) => x.kg ?? 0)) })).filter((p) => p.rm != null).slice(-20);
+  if (pts.length >= 2) {
+    const vals = pts.map((p) => p.rm);
+    const vmin = Math.min(...vals);
+    const vmax = Math.max(...vals);
+    const lo = vmin - 0.3;
+    const hi = Math.max(vmax + 0.3, lo + 1);
+    const W = 300; const Hc = 130; const pad = 10;
+    const x = (i) => pad + (i / (pts.length - 1)) * (W - 2 * pad);
+    const y = (v) => pad + (1 - (v - lo) / (hi - lo)) * (Hc - 2 * pad);
+    const jumps = pts.map((p, i) => (i > 0 && p.kg > pts[i - 1].kg ? (x(i) + x(i - 1)) / 2 : null)).filter((v) => v != null);
+    chart = `<section class="card pad">
+      <div class="section-head" style="margin: 0 0 8px"><h2 style="font-size: 17px">Geschätzte Kraft (1RM)</h2><span class="small muted">kg · letzte ${pts.length}</span></div>
+      <div class="hr-chart" style="grid-template-columns: 34px minmax(0, 1fr)">
+        <div class="hr-y small muted" style="height: ${Hc}px" aria-hidden="true"><span style="top: ${((y(vmax) / Hc) * 100).toFixed(1)}%">${kgTxt(vmax)}</span><span style="top: ${((y(vmin) / Hc) * 100).toFixed(1)}%">${kgTxt(vmin)}</span></div>
+        <svg viewBox="0 0 ${W} ${Hc}" style="height: ${Hc}px" role="img" aria-label="Geschätztes Maximalgewicht zwischen ${kgTxt(vmin)} und ${kgTxt(vmax)} Kilogramm; zuletzt ${kgTxt(vals[vals.length - 1])}">
+          <line x1="0" x2="${W}" y1="${y(vmax).toFixed(1)}" y2="${y(vmax).toFixed(1)}" style="stroke: var(--border)" stroke-dasharray="3 4"></line>
+          <line x1="0" x2="${W}" y1="${y(vmin).toFixed(1)}" y2="${y(vmin).toFixed(1)}" style="stroke: var(--border)" stroke-dasharray="3 4"></line>
+          ${jumps.map((jx) => `<line x1="${jx.toFixed(1)}" x2="${jx.toFixed(1)}" y1="4" y2="${Hc - 4}" style="stroke: var(--c-blue)" stroke-dasharray="4 4" opacity="0.6"></line>`).join('')}
+          <polyline fill="none" style="stroke: var(--c-blue)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${pts.map((p, i) => `${x(i).toFixed(1)},${y(p.rm).toFixed(1)}`).join(' ')}"></polyline>
+          ${pts.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.rm).toFixed(1)}" r="3" style="fill: var(--surface); stroke: var(--c-blue)" stroke-width="2"></circle>`).join('')}
+        </svg>
+      </div>
+      <div class="small muted" style="display: flex; justify-content: space-between; padding-left: 40px; margin-top: 4px"><span>${shortDate(pts[0].day)}</span><span>${shortDate(pts[pts.length - 1].day)}</span></div>
+      ${jumps.length ? '<p class="hint" style="margin-top: 8px">Gestrichelt: mehr Gewicht. Weniger Wiederholungen, aber mehr Kraft – kein Rückschritt.</p>' : ''}
+    </section>`;
+  }
+  const rows = hist.slice().reverse().slice(0, 15).map((h) => {
+    const d = parseDay(h.day);
+    return `<div class="row" style="justify-content: space-between"><span>${WEEKDAYS_SHORT[(d.getDay() + 6) % 7]} ${shortDate(h.day)}${h.day.slice(0, 4) !== T.slice(0, 4) ? ' ' + h.day.slice(0, 4) : ''}</span><b style="font-weight: 600">${esc(setsText(h.ex))}</b></div>`;
+  }).join('');
+  return `<div class="app">
+    <div class="bar"><button type="button" class="link-btn" data-action="go-back">${svg(UI_ICONS.back, 20, 2.2)}Zurück</button>${plan ? `<a class="link-btn" href="#/plan/${encodeURIComponent(key)}">Steigerung</a>` : '<span></span>'}</div>
+    <div class="wrap" style="gap: 14px">
+      <div style="padding: 0 4px">
+        <h1 style="font-size: 28px">${esc(name)}</h1>
+        <div class="small muted" style="font-size: 14px">${esc(equipment)}${equipment ? ' · ' : ''}${hist.length} ${hist.length === 1 ? 'Einheit' : 'Einheiten'} seit ${monthShort(first.slice(0, 7))} ${first.slice(0, 4)}</div>
+      </div>
+      ${planCard}
+      ${chart}
+      <div class="section-head"><h2 style="font-size: 17px">Verlauf</h2>${hist.length > 15 ? '<span class="small muted">letzte 15</span>' : ''}</div>
+      <div class="card list">${rows}</div>
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
+const PLAN_FIELDS = [
+  { key: 'sets', label: 'Sätze', hint: 'pro Einheit', unit: '', step: 1, min: 1, max: 10 },
+  { key: 'start_reps', label: 'Start', hint: 'Wiederholungen pro Satz', unit: ' Wdh.', step: 1, min: 1, max: 100 },
+  { key: 'kg', label: 'Gewicht', hint: 'aktuell', unit: ' kg', step: 0.5, min: 0, max: 300 },
+  { key: 'plus_reps', label: 'Steigern um', hint: 'Wiederholungen', unit: ' Wdh.', step: 1, min: 1, max: 10, sign: '+' },
+  { key: 'every_weeks', label: 'alle', hint: 'Wochen pro Stufe', unit: ' Wo.', step: 1, min: 1, max: 6 },
+  { key: 'max_reps', label: 'Bis', hint: 'dann mehr Gewicht', unit: ' Wdh.', step: 1, min: 1, max: 200 },
+  { key: 'kg_step', label: 'Mehr Gewicht', hint: 'und zurück auf Start', unit: ' kg', step: 0.5, min: 0.5, max: 50, sign: '+' }
+];
+export { PLAN_FIELDS };
+
+export function planForm(S, T, key) {
+  const d = S.planDraft;
+  if (!d || d.key !== key) return loading();
+  const p = d.plan;
+  const rows = PLAN_FIELDS.map((f) => `<div class="step-row">
+      <div style="min-width: 0"><div style="font-size: 15px; font-weight: 600">${f.label}</div><div class="small muted">${f.hint}</div></div>
+      <div class="mini-stepper">
+        <button type="button" data-action="plan-step" data-id="${f.key}" data-delta="-1" aria-label="${f.label} weniger">−</button>
+        <span aria-live="polite">${f.sign || ''}${kgTxt(p[f.key])}${f.unit}</span>
+        <button type="button" data-action="plan-step" data-id="${f.key}" data-delta="1" aria-label="${f.label} mehr">+</button>
+      </div>
+    </div>`).join('');
+  const pv = planPreview(p);
+  const every = Number(p.every_weeks) === 1 ? 'jede Woche' : `alle ${p.every_weeks} Wochen`;
+  const items = [...pv.items.slice(0, -1), { txt: `${kgTxt(pv.nextKg)} kg × ${p.start_reps}`, state: 'final' }];
+  return `<div class="app">
+    <div class="bar"><a class="link-btn" href="#/exercise/${encodeURIComponent(key)}">${svg(UI_ICONS.back, 20, 2.2)}${esc(p.exercise)}</a><span></span></div>
+    <div class="wrap" style="gap: 12px">
+      <div style="padding: 0 4px"><h1 style="font-size: 28px">Steigerung einrichten</h1><div class="small muted" style="font-size: 14px">${esc(p.exercise)}${p.equipment ? ' · ' + esc(p.equipment) : ''}</div></div>
+      <section class="card" style="padding: 4px 16px">${rows}</section>
+      <section class="plan-card">
+        <div class="small" style="font-weight: 600">So sieht das aus</div>
+        <div style="font-size: 16px; font-weight: 600; line-height: 1.35">${p.sets} × ${p.start_reps} bei ${kgTxt(p.kg)} kg, ${every} +${p.plus_reps}. Bei ${p.max_reps} geht es mit ${kgTxt(pv.nextKg)} kg wieder ab ${p.start_reps} los.</div>
+        ${ladderChips(items)}
+        <div class="small">Etwa ${pv.weeks} Wochen bis ${kgTxt(pv.nextKg)} kg – wenn alles klappt. Wenn nicht, dauert es eben länger.</div>
       </section>
+      <section class="card pad" style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.45">
+        <div><b>Geschafft</b> heißt: alle ${p.sets} Sätze mit mindestens ${kgTxt(p.kg)} kg erreichen das Ziel. Mehr Wiederholungen zählen mit.</div>
+        <div class="muted"><b style="color: var(--text)">Nicht geschafft?</b> Dann bleibt die Stufe einfach eine Woche länger. Kein Rückschritt, kein Minus.</div>
+        <div class="muted"><b style="color: var(--text)">Woche ohne diese Übung</b> (Pause, krank) zählt gar nicht.</div>
+      </section>
+      <p class="small" style="color: var(--danger); min-height: 18px" id="form-error" role="alert"></p>
+      <button type="button" class="btn" data-action="plan-save">Speichern</button>
+      ${d.existing ? '<button type="button" class="btn danger" data-action="plan-delete">Plan löschen – nur Verlauf zeigen</button>' : `<a class="btn ghost" href="#/exercise/${encodeURIComponent(key)}">Ohne Plan – nur Verlauf zeigen</a>`}
+    </div>
+    ${nav('overview')}
+  </div>`;
+}
+
+export function importView(S) {
+  const imp = S.imp || {};
+  let body;
+  if (imp.busy) {
+    body = `<section class="card pad"><p>${esc(imp.busy)}</p></section>`;
+  } else if (imp.done != null) {
+    body = `<section class="total" style="flex-direction: column; align-items: flex-start; gap: 6px">
+        <div style="font-size: 18px; font-weight: 700">${imp.done} ${imp.done === 1 ? 'Einheit' : 'Einheiten'} importiert</div>
+        <div class="small">Beim nächsten Mal einfach wieder die ganze CSV schicken – bekannte Einheiten werden übersprungen.</div>
+      </section>
+      ${imp.latest ? `<a class="btn" href="#/training/${encodeURIComponent(imp.latest)}">Letzte Einheit ansehen</a>` : '<a class="btn" href="#/training">Zum Training</a>'}`;
+  } else if (imp.preview) {
+    const p = imp.preview;
+    const range = p.from ? `${monthShort(p.from.slice(0, 7))} ${p.from.slice(0, 4)} bis ${shortDate(p.to)}${p.to.slice(0, 4) !== String(new Date().getFullYear()) ? ' ' + p.to.slice(0, 4) : ''}` : '';
+    body = `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+        <div class="small muted">${esc(imp.name || 'CSV-Datei')}</div>
+        <div class="grid2" style="gap: 8px">
+          <div class="imp-box" style="background: var(--soft)"><div class="small">Neu</div><b>${p.fresh.length}</b><div class="small">Einheiten</div></div>
+          <div class="imp-box" style="background: var(--bg)"><div class="small muted">Schon da</div><b>${p.known}</b><div class="small muted">werden übersprungen</div></div>
+        </div>
+        <div style="font-size: 14px; line-height: 1.5">${range} · ${p.exercises} ${p.exercises === 1 ? 'Übung' : 'Übungen'}${p.fresh.length ? ` · <b>${p.matched}</b> davon passen zu Trainings von Withings` : ''}</div>
+        ${p.fresh.length
+          ? `<button type="button" class="btn" data-action="import-go">${p.fresh.length} ${p.fresh.length === 1 ? 'Einheit' : 'Einheiten'} importieren</button>`
+          : '<p class="hint">Alles schon da – nichts zu tun.</p>'}
+        <button type="button" class="btn ghost" data-action="import-reset">Andere Datei</button>
+      </section>`;
+  } else {
+    body = `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+        <b>So geht's</b>
+        <ol style="margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.6">
+          <li>In Alpha Progression: Einstellungen → Daten exportieren (CSV)</li>
+          <li>„Teilen“ → <b>Motivator</b> wählen</li>
+          <li>Fertig – oder die Datei hier auswählen:</li>
+        </ol>
+        <label class="btn" style="cursor: pointer">CSV-Datei auswählen<input type="file" accept=".csv,text/csv,text/comma-separated-values,text/plain" data-action="import-file" style="position: absolute; opacity: 0; width: 1px; height: 1px"></label>
+        <p class="hint">„Teilen → Motivator“ klappt, wenn die App auf dem Startbildschirm installiert ist.</p>
+        ${imp.error ? `<p class="small" style="color: var(--danger)" role="alert">${esc(imp.error)}</p>` : ''}
+      </section>`;
+  }
+  return `<div class="app">
+    ${backBar('#/training', 'Training')}
+    <div class="wrap" style="gap: 16px">
+      <h1 style="font-size: 26px; padding: 0 4px; line-height: 1.2">Trainings aus Alpha Progression holen</h1>
+      ${S.hasStrengthSchema ? body : '<section class="card pad"><p class="hint">Bitte zuerst das Datenbank-Update <code>004_kraft.sql</code> im Supabase SQL-Editor ausführen.</p></section>'}
     </div>
     ${nav('overview')}
   </div>`;
@@ -771,6 +1032,23 @@ function withingsCard(S) {
   </section>`;
 }
 
+function alphaCard(S) {
+  if (!S.hasStrengthSchema) {
+    return `<section class="card pad"><b>Alpha Progression</b><p class="hint" style="margin-top: 4px">Für den Import bitte zuerst das Datenbank-Update <code>004_kraft.sql</code> im Supabase SQL-Editor ausführen.</p></section>`;
+  }
+  const on = alphaOn(S);
+  const n = (S.strength || []).length;
+  const lastDay = n ? S.strength.map((x) => x.day).sort().pop() : null;
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 14px">
+      <div class="switch-row" style="cursor: default">
+        <div><div style="font-size: 16px; font-weight: 700">Alpha Progression</div>
+          <div class="small muted">${on ? (n ? `${n} Einheiten · zuletzt ${shortDate(lastDay)}` : 'Noch nichts importiert') : 'Übungen, Sätze und Steigerung aus der App'}</div></div>
+        <button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="Alpha Progression nutzen" data-action="module-toggle" data-id="alpha"></button>
+      </div>
+      ${on ? '<a class="btn ghost" href="#/import">Trainings importieren</a>' : ''}
+    </section>`;
+}
+
 // ───────────── Profil ─────────────
 
 export function profile(S, email) {
@@ -797,6 +1075,7 @@ export function profile(S, email) {
         </form>
       </section>
       ${withingsCard(S)}
+      ${alphaCard(S)}
       <section style="display: flex; flex-direction: column; gap: 10px">
         <h2 class="h3">Deine Daten</h2>
         <button type="button" class="btn ghost" data-action="export">Alle Daten herunterladen</button>

@@ -2,9 +2,10 @@
 
 import * as db from './db.js';
 import * as V from './views.js';
-import { today, addDays, diffDays } from './dates.js';
+import { today, addDays, diffDays, weekStart } from './dates.js';
 import { indexLogs, logOf, lastActivityDay } from './stats.js';
 import { autoLogChanges, CATEGORY_GROUPS } from './auto.js';
+import { parseAlphaCsv, importPreview, exerciseHistory, exerciseKey, splitKey, suggestPlan, mergeTrainings } from './strength.js';
 import { WITHINGS_CLIENT_ID, WITHINGS_REDIRECT } from './config.js';
 
 const root = document.getElementById('app');
@@ -21,6 +22,11 @@ const S = {
   dismissals: [],
   withings: { connected: false },
   hasWithingsSchema: false,
+  strength: [],
+  plans: [],
+  hasStrengthSchema: false,
+  imp: null,
+  planDraft: null,
   syncing: false,
   idx: new Map(),
   cat: 'all',
@@ -63,6 +69,9 @@ function go(hash) {
 window.addEventListener('hashchange', () => {
   S.sheet = null;
   S.form = null;
+  const r = route();
+  if (r.name !== 'import') S.imp = null;
+  if (r.name === 'import' && r.id === 'shared') consumeShared();
   render();
   window.scrollTo(0, 0);
 });
@@ -93,6 +102,9 @@ function render() {
     case 'habits': html = V.habitsList(S, T); break;
     case 'training': html = r.id ? V.sessionView(S, T, r.id) : V.trainingView(S, T); break;
     case 'steps': html = V.stepsView(S, T); break;
+    case 'import': html = V.importView(S); break;
+    case 'exercise': html = V.exerciseView(S, T, r.id); break;
+    case 'plan': ensurePlanDraft(r.id, T); html = V.planForm(S, T, r.id); break;
     case 'habit': html = V.detail(S, T, r.id); break;
     case 'new': html = V.habitForm(S, T, null); break;
     case 'edit': html = V.habitForm(S, T, r.id); break;
@@ -131,6 +143,7 @@ async function persist(fn, errorText = 'Speichern hat nicht geklappt – bitte V
     const msg = String((err && err.message) || '');
     let text = errorText;
     if (/schedule_min/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.';
+    else if (/strength_sessions|exercise_plans/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 004 (Krafttraining) im SQL-Editor ausführen.';
     else if (/auto_|tiles|source|schema cache/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 003 (Withings) im SQL-Editor ausführen.';
     toast(text);
     try { await reload(); } catch { /* offline */ }
@@ -281,6 +294,113 @@ async function removePausesOn(habitId, day) {
   for (const p of hits) await persist(() => db.deletePause(p.id));
 }
 
+// ───────────── Alpha Progression ─────────────
+
+function alphaModule(on) {
+  if (!S.profile) return null;
+  const mods = new Set(S.profile.modules || ['habits']);
+  if (on) mods.add('alpha'); else mods.delete('alpha');
+  S.profile.modules = [...mods];
+  return persist(() => db.updateProfile(S.profile.id, { modules: S.profile.modules }));
+}
+
+function handleImportText(text, name) {
+  const { sessions } = parseAlphaCsv(text);
+  if (!sessions.length) {
+    S.imp = { error: 'Das sieht nicht nach einem Export aus Alpha Progression aus. Bitte die CSV aus „Daten exportieren“ wählen.' };
+  } else {
+    S.imp = { name, parsed: sessions, preview: importPreview(sessions, S.strength, S.workouts) };
+  }
+  render();
+}
+
+// Über „Teilen → Motivator“ geschickte Datei: Der Service Worker hat sie zwischengelagert.
+async function consumeShared() {
+  if (!('caches' in window) || !S.loaded) return;
+  try {
+    const cache = await caches.open('motivator-share');
+    const res = await cache.match('./shared-file');
+    if (!res) return;
+    const name = decodeURIComponent(res.headers.get('X-Name') || '') || 'geteilte Datei';
+    const text = await res.text();
+    await cache.delete('./shared-file');
+    history.replaceState(null, '', location.pathname + location.search + '#/import');
+    handleImportText(text, name);
+  } catch (err) {
+    console.error(err);
+    toast('Die geteilte Datei konnte nicht gelesen werden – bitte über „CSV-Datei auswählen“.');
+  }
+}
+
+async function runImport() {
+  const p = S.imp && S.imp.preview;
+  if (!p || !p.fresh.length) return;
+  S.imp = { ...S.imp, busy: `Importiere ${p.fresh.length} Einheiten …` };
+  render();
+  const saved = await persist(() => db.importStrength(p.fresh), 'Import hat nicht geklappt – bitte Verbindung prüfen.');
+  if (!saved) { S.imp = null; render(); return; }
+  S.strength = [...S.strength, ...saved].sort((a, b) => (a.started_at < b.started_at ? -1 : 1));
+  if (!V.alphaOn(S)) await alphaModule(true);
+  const newest = saved.slice().sort((a, b) => (a.started_at < b.started_at ? 1 : -1))[0];
+  let latest = null;
+  if (newest) {
+    const w = mergeTrainings(S.workouts, S.strength).find((x) => x.strength && x.strength.id === newest.id);
+    latest = w ? w.id : null;
+  }
+  S.imp = { done: saved.length, latest };
+  render();
+}
+
+function ensurePlanDraft(key, T) {
+  if (S.planDraft && S.planDraft.key === key) return;
+  const existing = (S.plans || []).find((p) => exerciseKey({ name: p.exercise, equipment: p.equipment }) === key);
+  const hist = exerciseHistory(S.strength, key);
+  const { name, equipment } = splitKey(key);
+  const base = existing ? { ...existing } : (suggestPlan(hist, T) || {
+    exercise: name, equipment, sets: 3, start_reps: 10, kg: 0, plus_reps: 2, every_weeks: 2, max_reps: 20, kg_step: 2.5, started_on: weekStart(T)
+  });
+  ['sets', 'start_reps', 'kg', 'plus_reps', 'every_weeks', 'max_reps', 'kg_step'].forEach((k) => { base[k] = Number(base[k]); });
+  S.planDraft = { key, existing: existing || null, plan: base };
+}
+
+function stepPlan(field, delta) {
+  const d = S.planDraft;
+  if (!d) return;
+  const f = V.PLAN_FIELDS.find((x) => x.key === field);
+  if (!f) return;
+  const p = d.plan;
+  p[field] = Math.min(f.max, Math.max(f.min, Math.round((p[field] + delta * f.step) * 100) / 100));
+  if (field === 'start_reps' && p.max_reps < p.start_reps) p.max_reps = p.start_reps;
+  if (field === 'max_reps' && p.max_reps < p.start_reps) p.max_reps = p.start_reps;
+  render();
+}
+
+async function savePlanDraft() {
+  const d = S.planDraft;
+  if (!d) return;
+  const p = { ...d.plan };
+  if (p.max_reps < p.start_reps) { const el = document.getElementById('form-error'); if (el) el.textContent = '„Bis“ muss mindestens so groß sein wie „Start“.'; return; }
+  const ex = d.existing;
+  // Neues Gewicht, neuer Start oder andere Satzzahl → Plan beginnt diese Woche neu
+  if (ex && (Number(ex.kg) !== p.kg || Number(ex.start_reps) !== p.start_reps || Number(ex.sets) !== p.sets)) p.started_on = weekStart(today());
+  const saved = await persist(() => db.savePlan(p));
+  if (!saved) return;
+  S.plans = [...(S.plans || []).filter((x) => x.id !== saved.id), saved];
+  S.planDraft = null;
+  toast(ex ? 'Plan gespeichert' : 'Plan angelegt – viel Erfolg!');
+  go('#/exercise/' + encodeURIComponent(d.key));
+}
+
+async function deletePlanDraft() {
+  const d = S.planDraft;
+  if (!d || !d.existing) return;
+  if (!confirm('Plan löschen? Dein Verlauf bleibt.')) return;
+  S.plans = S.plans.filter((x) => x.id !== d.existing.id);
+  S.planDraft = null;
+  go('#/exercise/' + encodeURIComponent(d.key));
+  await persist(() => db.deletePlan(d.existing.id));
+}
+
 // ───────────── Formular Gewohnheit ─────────────
 
 function readHabitForm(form) {
@@ -410,7 +530,9 @@ function exportData() {
     kategorien: S.categories,
     gewohnheiten: S.habits,
     eintraege: S.logs,
-    pausen: S.pauses
+    pausen: S.pauses,
+    krafteinheiten: S.strength,
+    steigerungsplaene: S.plans
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -531,6 +653,23 @@ root.addEventListener('click', async (e) => {
       if (S.hasWithingsSchema) await persist(() => db.updateProfile(S.profile.id, { tiles: S.profile.tiles }));
       break;
     }
+    case 'module-toggle':
+      await alphaModule(!V.alphaOn(S));
+      render();
+      break;
+    case 'go-back':
+      if (history.length > 1) history.back(); else go('#/training');
+      break;
+    case 'plan-step':
+      stepPlan(id, Number(el.dataset.delta)); break;
+    case 'plan-save':
+      await savePlanDraft(); break;
+    case 'plan-delete':
+      await deletePlanDraft(); break;
+    case 'import-go':
+      await runImport(); break;
+    case 'import-reset':
+      S.imp = null; render(); break;
     case 'logout':
       await db.signOut(); break;
     case 'welcome-toggle':
@@ -552,6 +691,20 @@ root.addEventListener('click', async (e) => {
 root.addEventListener('change', async (e) => {
   const el = e.target;
   const action = el.dataset && el.dataset.action;
+  if (action === 'import-file') {
+    const file = el.files && el.files[0];
+    if (!file) return;
+    S.imp = { busy: 'Lese Datei …' };
+    render();
+    try {
+      handleImportText(await file.text(), file.name);
+    } catch (err) {
+      console.error(err);
+      S.imp = { error: 'Die Datei konnte nicht gelesen werden.' };
+      render();
+    }
+    return;
+  }
   if (action === 'train-range') {
     S.trainRange = Number(el.value);
     local.set('trainRange', el.value);
@@ -643,6 +796,7 @@ async function afterLogin() {
     location.hash = '#/welcome';
   }
   render();
+  if (route().name === 'import' && route().id === 'shared') consumeShared();
   syncWithings(); // im Hintergrund
 }
 

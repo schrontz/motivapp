@@ -287,3 +287,27 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 /* ── Meldung ── */
 .toast { position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--chip-on-bg); color: var(--chip-on-fg); padding: 12px 18px; border-radius: 14px; font-size: 14px; font-weight: 500; z-index: 20; max-width: calc(100% - 32px); }
 .loading { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+
+/* ── Krafttraining (Alpha Progression) ── */
+a.ex-card { display: block; padding: 14px 16px; text-decoration: none; color: inherit; }
+.ex-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.ex-name { font-size: 16px; font-weight: 700; }
+.set-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.set-cell { background: var(--bg); border-radius: 10px; padding: 6px 8px; text-align: center; }
+.set-cell b { font-size: 14px; font-weight: 700; }
+.plan-card { background: var(--k-blue); color: var(--text); border-radius: var(--radius-m); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.plan-card > .small { color: var(--c-blue); }
+.plan-big { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.ladder { display: flex; gap: 6px; flex-wrap: wrap; }
+.ladder span { min-width: 34px; height: 30px; padding: 0 8px; border-radius: 15px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--c-blue); color: var(--c-blue); opacity: 0.75; }
+.ladder span[data-state="done"] { background: var(--c-blue); color: var(--on-accent); opacity: 1; }
+.ladder span[data-state="now"] { background: var(--surface); border-width: 2px; opacity: 1; }
+.ladder span[data-state="final"] { background: var(--c-blue); color: var(--on-accent); opacity: 1; }
+.step-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); }
+.step-row:first-child { border-top: 0; }
+.mini-stepper { display: flex; align-items: center; gap: 6px; flex: none; }
+.mini-stepper button { width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--border); background: var(--bg); font-size: 20px; }
+.mini-stepper span { min-width: 72px; text-align: center; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.imp-box { border-radius: 14px; padding: 12px; }
+.imp-box b { display: block; font-size: 26px; font-weight: 700; }
+label.btn { position: relative; }

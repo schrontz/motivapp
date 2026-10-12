@@ -14,7 +14,7 @@ Live: https://schrontz.github.io/motivapp/ · Demo ohne Login: https://schrontz.
 ## Datenbank-Updates
 
 Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede einmal, Wiederholen schadet nicht):
-`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql`
+`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql`
 
 ## Withings verbinden (einmalig)
 
@@ -26,6 +26,10 @@ Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede ei
 
 Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project Settings → API Keys* einen Secret Key kopieren und als Secret `MOTIVATOR_SECRET_KEY` anlegen.
 
+## Alpha Progression (optional, pro Person)
+
+*Profil → Alpha Progression* einschalten. Import: in Alpha Progression *Daten exportieren (CSV)* → *Teilen → Motivator* (geht, wenn die App installiert ist) oder in der App *Training → Alpha importieren → CSV-Datei auswählen*. Immer die ganze CSV schicken – Bekanntes wird übersprungen. Einheiten werden über die Startzeit (±20 Min.) mit Withings-Trainings zusammengeführt.
+
 ## Aufbau
 
 | Datei | Inhalt |
@@ -35,6 +39,7 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 | `js/views.js` | Alle Bildschirme |
 | `js/stats.js` | Quoten, Ringe, Statistik – reine Funktionen, getestet |
 | `js/auto.js` | Withings: Trainingsarten, Auto-Abhaken, Kacheln – getestet |
+| `js/strength.js` | Alpha-CSV, Zusammenführen, Steigerung, 1RM – getestet |
 | `supabase/functions/withings/` | Server-Funktion für die Withings-API |
 | `js/dates.js` | Datums-Hilfen |
 | `js/db.js` | Supabase-Zugriff + Demo-Daten (`?demo`) |

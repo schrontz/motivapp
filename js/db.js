@@ -3,7 +3,7 @@
 // - Demo (?demo in der Adresse): Beispieldaten im Speicher, nichts wird gespeichert.
 
 import { SUPABASE_URL, SUPABASE_KEY, SUPABASE_JS } from './config.js';
-import { today, addDays } from './dates.js';
+import { today, addDays, toDay, weekStart } from './dates.js';
 
 export const isDemo = new URLSearchParams(location.search).has('demo');
 
@@ -59,16 +59,62 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true };
-  const [profiles, categories, habits, logs, pauses, extra] = await Promise.all([
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true };
+  const [profiles, categories, habits, logs, pauses, extra, strength] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
     fetchAll('habits', 'sort_order'),
     fetchAll('habit_logs', 'day'),
     fetchAll('pauses', 'start_day'),
-    loadWithingsData()
+    loadWithingsData(),
+    loadStrengthData()
   ]);
-  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra };
+  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength };
+}
+
+// Krafttraining (Alpha Progression). Fehlt das Datenbank-Update 004 noch, läuft die App ohne weiter.
+export async function loadStrengthData() {
+  if (isDemo) {
+    const { strength, plans } = structuredClone(demo);
+    return { strength, plans, hasStrengthSchema: true };
+  }
+  try {
+    const [strength, plans] = await Promise.all([
+      fetchAll('strength_sessions', 'started_at'),
+      fetchAll('exercise_plans', 'exercise')
+    ]);
+    return { strength, plans, hasStrengthSchema: true };
+  } catch (err) {
+    console.warn('Krafttraining nicht verfügbar (Datenbank-Update 004 schon ausgeführt?)', err);
+    return { strength: [], plans: [], hasStrengthSchema: false };
+  }
+}
+
+// Neue Einheiten speichern – in Paketen, bekannte (gleiche ext_id) werden übersprungen
+export async function importStrength(sessions) {
+  if (isDemo) return sessions.map((s) => ({ ...s, id: demoId() }));
+  const saved = [];
+  for (let i = 0; i < sessions.length; i += 50) {
+    const chunk = sessions.slice(i, i + 50);
+    const rows = check(await client.from('strength_sessions')
+      .upsert(chunk, { onConflict: 'user_id,ext_id', ignoreDuplicates: true })
+      .select());
+    saved.push(...rows);
+  }
+  return saved;
+}
+
+export async function savePlan(plan) {
+  const { id, user_id, created_at, ...fields } = plan;
+  fields.updated_at = new Date().toISOString();
+  if (isDemo) return { ...fields, id: id || demoId() };
+  if (id) return check(await client.from('exercise_plans').update(fields).eq('id', id).select().single());
+  return check(await client.from('exercise_plans').insert(fields).select().single());
+}
+
+export async function deletePlan(id) {
+  if (isDemo) return;
+  check(await client.from('exercise_plans').delete().eq('id', id));
 }
 
 // Withings-Daten. Fehlt das Datenbank-Update 003 noch, läuft die App ohne Withings weiter.
@@ -254,10 +300,34 @@ const demo = (() => {
       workouts.push({ id: 'g' + i, ext_id: 'g' + i, day: d, start_at: startAt.toISOString(), end_at: new Date(startAt.getTime() + 24 * 60000).toISOString(), category: 1, duration_min: 24, calories: 90, hr_avg: 96, hr_max: 112, data: {} });
     }
   }
+  // Alpha Progression: zu jedem Krafttraining die passende Einheit (gleiche Startzeit),
+  // dazu drei ältere Einheiten ohne Uhr
+  const strength = [];
+  const sets = (kg, reps, n = 3) => Array.from({ length: n }, () => ({ kg, reps }));
+  const unit = (id, startAt, mins, k) => {
+    const curls = k > 4 ? { kg: 4, reps: Math.min(40, 30 + Math.floor((30 - k) / 3)) } : { kg: 7, reps: 20 };
+    strength.push({
+      id, ext_id: 'alpha:' + id, source: 'alpha', title: k % 2 ? 'Oberkörper Kraft' : 'Oberkörper 2', program: 'Tag ' + (1 + (k % 5)) + ' · Woche 17 · Mini Gainz PT. II',
+      started_at: startAt, day: toDay(new Date(startAt)), duration_min: mins,
+      exercises: [
+        { name: 'Seitheben', equipment: 'Kurzhanteln', kind: 'kg_reps', sets: sets(4, 22 + Math.floor((30 - k) / 7)) },
+        { name: 'Curls', equipment: 'Kurzhanteln', kind: 'kg_reps', sets: sets(curls.kg, curls.reps) },
+        { name: 'Trizepsdrücken über dem Kopf', equipment: 'Kurzhanteln', kind: 'kg_reps', sets: sets(4, 22) },
+        { name: 'Plank', equipment: 'Körpergewicht', kind: 'time', sets: [{ sec: 55 }, { sec: 55 }] }
+      ]
+    });
+  };
+  for (const w of workouts) {
+    if (w.category !== 16) continue;
+    const k = Number(String(w.id).slice(1));
+    unit('a' + k, w.start_at, Math.round(w.duration_min) - 1, k);
+  }
+  for (const k of [40, 44, 47]) unit('a' + k, new Date(addDays(t, -k) + 'T18:00:00').toISOString(), 48, k);
+  const plans = [{ id: 'plan-curls', exercise: 'Curls', equipment: 'Kurzhanteln', sets: 3, start_reps: 20, kg: 7, plus_reps: 2, every_weeks: 2, max_reps: 40, kg_step: 2, started_on: weekStart(addDays(t, -7)) }];
   return {
-    profile: { id: 'demo', display_name: 'Jan', modules: ['habits'], tiles: ['steps', 'training'] },
+    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha'], tiles: ['steps', 'training'] },
     categories: cats, habits, logs, pauses,
-    activity, workouts, dismissals: [],
+    activity, workouts, dismissals: [], strength, plans,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
   };
 })();
