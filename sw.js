@@ -1,17 +1,18 @@
 // Service Worker: App funktioniert auch bei wackeligem Netz.
 // Strategie: erst Netz (damit Updates sofort ankommen), bei Fehler der letzte Stand aus dem Cache.
-const CACHE = 'motivator-v11';
+const CACHE = 'motivator-v12';
 const SHARE = 'motivator-share'; // geteilte Dateien, bis die App sie abholt
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/views.js', './js/stats.js', './js/dates.js', './js/db.js', './js/icons.js', './js/config.js', './js/auto.js', './js/strength.js',
-  './icons/icon.svg', './icons/icon-192.png'
+  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (e) => {
   // cache: 'reload' – am Browser-Cache vorbei, sonst landet eine bis zu 10 Min. alte Version von GitHub Pages im Cache
+  // Einzeln und fehlertolerant: Ein wackeliger Abruf darf die Installation nicht scheitern lassen
   e.waitUntil(caches.open(CACHE)
-    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+    .then((c) => Promise.allSettled(SHELL.map((u) => c.add(new Request(u, { cache: 'reload' })))))
     .then(() => self.skipWaiting()));
 });
 

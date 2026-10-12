@@ -47,6 +47,22 @@ const session = {
   set(k, v) { try { sessionStorage.setItem('motivator.' + k, v); } catch { /* egal */ } }
 };
 S.cat = local.get('cat') || 'all';
+
+// Installieren: Chrome meldet per „beforeinstallprompt“, dass die App installierbar ist
+let installEvent = null;
+S.standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installEvent = e;
+  S.canInstall = true;
+  if (S.loaded) render();
+});
+window.addEventListener('appinstalled', () => {
+  installEvent = null;
+  S.canInstall = false;
+  toast('Installiert – Motivator liegt jetzt auf deinem Startbildschirm.');
+  if (S.loaded) render();
+});
 S.trainRange = Number(local.get('trainRange') || 30);
 // „Passt so“ beim Muster-Hinweis: erst wieder zeigen, wenn das Muster 4 weitere Zeiträume anhält
 S.hintSeen = (id, count) => {
@@ -657,6 +673,15 @@ root.addEventListener('click', async (e) => {
       await alphaModule(!V.alphaOn(S));
       render();
       break;
+    case 'install': {
+      if (!installEvent) { toast('Bitte über das Chrome-Menü ⋮ → „App installieren“.'); break; }
+      installEvent.prompt();
+      try { await installEvent.userChoice; } catch { /* egal */ }
+      installEvent = null;
+      S.canInstall = false;
+      render();
+      break;
+    }
     case 'go-back':
       if (history.length > 1) history.back(); else go('#/training');
       break;

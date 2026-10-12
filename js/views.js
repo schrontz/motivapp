@@ -1049,6 +1049,19 @@ function alphaCard(S) {
     </section>`;
 }
 
+function installCard(S) {
+  if (S.standalone) return '';
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <img src="icons/icon-192.png" width="44" height="44" alt="" style="border-radius: 12px">
+        <div><div style="font-size: 16px; font-weight: 700">Als App installieren</div><div class="small muted">Eigenes Symbol, ohne Adressleiste – und „Teilen → Motivator“ klappt.</div></div>
+      </div>
+      ${S.canInstall
+        ? '<button type="button" class="btn" data-action="install">Motivator installieren</button>'
+        : '<p class="hint">Chrome: Menü ⋮ → „App installieren“ (oder „Zum Startbildschirm hinzufügen“ → „Installieren“). Erscheint das nicht, die Seite einmal neu laden und kurz warten.</p>'}
+    </section>`;
+}
+
 // ───────────── Profil ─────────────
 
 export function profile(S, email) {
@@ -1074,6 +1087,7 @@ export function profile(S, email) {
           <button type="submit" class="icon-btn" aria-label="Kategorie hinzufügen">${svg(UI_ICONS.plus)}</button>
         </form>
       </section>
+      ${installCard(S)}
       ${withingsCard(S)}
       ${alphaCard(S)}
       <section style="display: flex; flex-direction: column; gap: 10px">
