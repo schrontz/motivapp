@@ -59,15 +59,62 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return structuredClone(demo);
-  const [profiles, categories, habits, logs, pauses] = await Promise.all([
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true };
+  const [profiles, categories, habits, logs, pauses, extra] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
     fetchAll('habits', 'sort_order'),
     fetchAll('habit_logs', 'day'),
-    fetchAll('pauses', 'start_day')
+    fetchAll('pauses', 'start_day'),
+    loadWithingsData()
   ]);
-  return { profile: profiles[0] || null, categories, habits, logs, pauses };
+  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra };
+}
+
+// Withings-Daten. Fehlt das Datenbank-Update 003 noch, läuft die App ohne Withings weiter.
+export async function loadWithingsData() {
+  if (isDemo) {
+    const { activity, workouts, dismissals, withings } = structuredClone(demo);
+    return { activity, workouts, dismissals, withings, hasWithingsSchema: true };
+  }
+  try {
+    const since = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
+    const [status, activity, workouts, dismissals] = await Promise.all([
+      client.rpc('withings_status').then(check),
+      client.from('daily_activity').select('*').gte('day', since).order('day').then(check),
+      client.from('workouts').select('*').gte('day', since).order('start_at').then(check),
+      fetchAll('auto_dismissals', 'day')
+    ]);
+    const s = status && status[0];
+    return {
+      activity, workouts, dismissals, hasWithingsSchema: true,
+      withings: s ? { connected: true, last_sync_at: s.last_sync_at, connected_at: s.connected_at } : { connected: false }
+    };
+  } catch (err) {
+    console.warn('Withings-Daten nicht verfügbar (Datenbank-Update 003 schon ausgeführt?)', err);
+    return { activity: [], workouts: [], dismissals: [], withings: { connected: false }, hasWithingsSchema: false };
+  }
+}
+
+export async function withings(action, extra = {}) {
+  if (isDemo) {
+    if (action === 'sync') return { connected: true, last_sync_at: new Date().toISOString() };
+    return { connected: action !== 'disconnect' };
+  }
+  const { data, error } = await client.functions.invoke('withings', { body: { action, ...extra } });
+  if (error) {
+    let detail = '';
+    try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
+    const e = new Error(detail || error.message || 'Withings-Abgleich fehlgeschlagen');
+    throw e;
+  }
+  if (data && data.error && !data.connected) throw new Error(data.error);
+  return data;
+}
+
+export async function addDismissal(habitId, day) {
+  if (isDemo) return;
+  check(await client.from('auto_dismissals').upsert({ habit_id: habitId, day }, { onConflict: 'habit_id,day' }));
 }
 
 function demoId() {
@@ -86,10 +133,13 @@ export async function archiveHabit(id) {
   check(await client.from('habits').update({ archived: true }).eq('id', id));
 }
 
-export async function setLog(habitId, day, status, value = null) {
-  if (isDemo) return { habit_id: habitId, day, status, value };
+// source wird nur mitgeschickt, wenn die Spalte existiert (Datenbank-Update 003)
+export async function setLog(habitId, day, status, value = null, source = null) {
+  const row = { habit_id: habitId, day, status, value };
+  if (source) row.source = source;
+  if (isDemo) return row;
   return check(await client.from('habit_logs')
-    .upsert({ habit_id: habitId, day, status, value }, { onConflict: 'habit_id,day' })
+    .upsert(row, { onConflict: 'habit_id,day' })
     .select().single());
 }
 
@@ -141,8 +191,11 @@ const demo = (() => {
     { id: 'h-skin', category_id: 'c-pflege', name: 'Hautpflege', icon: 'drop', color: 'teal', kind: 'check', schedule: 'daily', start_day: start, archived: false, sort_order: 1 },
     { id: 'h-duo', category_id: 'c-kopf', name: 'Duolingo', icon: 'chat', color: 'orange', kind: 'check', schedule: 'daily', mini_text: 'Eine Lektion', start_day: start, archived: false, sort_order: 2 },
     { id: 'h-brain', category_id: 'c-kopf', name: 'Hirntraining', icon: 'spark', color: 'orange', kind: 'check', schedule: 'per_week', schedule_count: 5, schedule_min: 3, mini_text: '5 Minuten', start_day: start, archived: false, sort_order: 3 },
-    { id: 'h-push', category_id: 'c-sport', name: 'Liegestütze', icon: 'dumbbell', color: 'blue', kind: 'count', target: 22, unit: 'Wdh.', mini_value: 10, schedule: 'daily', start_day: start, archived: false, sort_order: 4 }
+    { id: 'h-push', category_id: 'c-sport', name: 'Liegestütze', icon: 'dumbbell', color: 'blue', kind: 'count', target: 22, unit: 'Wdh.', mini_value: 10, schedule: 'daily', start_day: start, archived: false, sort_order: 4 },
+    { id: 'h-steps', category_id: 'c-sport', name: '5.000 Schritte', icon: 'steps', color: 'blue', kind: 'count', target: 5000, unit: 'Schritte', mini_value: 2000, schedule: 'daily', auto_metric: 'steps', start_day: addDays(t, -10), archived: false, sort_order: 5 }
   ];
+  habits[0].auto_categories = [16, 17];
+  habits[0].auto_min_minutes = 20;
   // deterministische Zufallsfolge, damit die Demo immer gleich aussieht
   let seed = 7;
   const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
@@ -165,8 +218,27 @@ const demo = (() => {
   logs.push({ habit_id: 'h-skin', day: t, status: 'done' });
   logs.push({ habit_id: 'h-duo', day: t, status: 'mini' });
   const pauses = [{ id: 'p1', habit_id: null, start_day: addDays(t, -20), end_day: addDays(t, -18) }];
+  // Withings-Beispieldaten: Schritte täglich, Krafttraining Mo/Mi/Fr (+ heute früh), Spaziergänge
+  const activity = [];
+  const workouts = [];
+  for (let i = 30; i >= 0; i -= 1) {
+    const d = addDays(t, -i);
+    activity.push({ day: d, steps: i === 0 ? 6240 : 3000 + Math.round(rnd() * 7000), distance_m: 4810, active_minutes: 20 + Math.round(rnd() * 40) });
+    const wd = new Date(d + 'T12:00').getDay();
+    if ([1, 3, 5].includes(wd) || i === 0) {
+      const startAt = new Date(d + (i === 0 ? 'T07:30:00' : 'T18:05:00'));
+      const mins = 45 + Math.round(rnd() * 12);
+      workouts.push({ id: 'w' + i, ext_id: 'w' + i, day: d, start_at: startAt.toISOString(), end_at: new Date(startAt.getTime() + mins * 60000).toISOString(), category: 16, duration_min: mins, calories: 280 + Math.round(rnd() * 60), hr_avg: 112 + Math.round(rnd() * 12), hr_max: 145 + Math.round(rnd() * 15), data: {} });
+    }
+    if (rnd() < 0.4) {
+      const startAt = new Date(d + 'T12:40:00');
+      workouts.push({ id: 'g' + i, ext_id: 'g' + i, day: d, start_at: startAt.toISOString(), end_at: new Date(startAt.getTime() + 24 * 60000).toISOString(), category: 1, duration_min: 24, calories: 90, hr_avg: 96, hr_max: 112, data: {} });
+    }
+  }
   return {
-    profile: { id: 'demo', display_name: 'Jan', modules: ['habits'] },
-    categories: cats, habits, logs, pauses
+    profile: { id: 'demo', display_name: 'Jan', modules: ['habits'], tiles: ['steps', 'training'] },
+    categories: cats, habits, logs, pauses,
+    activity, workouts, dismissals: [],
+    withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
   };
 })();

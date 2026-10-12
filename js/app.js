@@ -4,6 +4,8 @@ import * as db from './db.js';
 import * as V from './views.js';
 import { today, addDays, diffDays } from './dates.js';
 import { indexLogs, logOf, lastActivityDay } from './stats.js';
+import { autoLogChanges, CATEGORY_GROUPS } from './auto.js';
+import { WITHINGS_CLIENT_ID, WITHINGS_REDIRECT } from './config.js';
 
 const root = document.getElementById('app');
 
@@ -14,6 +16,12 @@ const S = {
   habits: [],
   logs: [],
   pauses: [],
+  activity: [],
+  workouts: [],
+  dismissals: [],
+  withings: { connected: false },
+  hasWithingsSchema: false,
+  syncing: false,
   idx: new Map(),
   cat: 'all',
   sheet: null,
@@ -118,7 +126,10 @@ async function persist(fn, errorText = 'Speichern hat nicht geklappt – bitte V
   } catch (err) {
     console.error(err);
     const msg = String((err && err.message) || '');
-    toast(/schedule_min/.test(msg) ? 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.' : errorText);
+    let text = errorText;
+    if (/schedule_min/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.';
+    else if (/auto_|tiles|source|schema cache/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 003 (Withings) im SQL-Editor ausführen.';
+    toast(text);
     try { await reload(); } catch { /* offline */ }
     render();
     return null;
@@ -127,12 +138,102 @@ async function persist(fn, errorText = 'Speichern hat nicht geklappt – bitte V
 
 // ───────────── Einträge ─────────────
 
-function putLog(habitId, day, status, value = null) {
+function putLog(habitId, day, status, value = null, source = 'manual') {
+  const before = logOf(S.idx, habitId, day);
   S.logs = S.logs.filter((l) => !(l.habit_id === habitId && l.day === day));
-  if (status) S.logs.push({ habit_id: habitId, day, status, value });
+  if (status) S.logs.push({ habit_id: habitId, day, status, value, source });
+  // Eintrag bei einer Auto-Gewohnheit entfernt → merken, damit Withings ihn nicht wieder setzt
+  const h = S.habits.find((x) => x.id === habitId);
+  const hasAuto = h && ((h.auto_categories && h.auto_categories.length) || h.auto_metric);
+  const dismiss = !status && before && (before.source === 'withings' || hasAuto) && S.hasWithingsSchema;
+  if (dismiss) S.dismissals.push({ habit_id: habitId, day });
   reindex();
   render();
-  return persist(() => (status ? db.setLog(habitId, day, status, value) : db.deleteLog(habitId, day)));
+  const src = S.hasWithingsSchema ? source : null;
+  return persist(async () => {
+    if (status) await db.setLog(habitId, day, status, value, src);
+    else await db.deleteLog(habitId, day);
+    if (dismiss) await db.addDismissal(habitId, day);
+  });
+}
+
+// ───────────── Withings ─────────────
+
+async function applyAuto() {
+  if (!S.hasWithingsSchema) return;
+  const changes = autoLogChanges({
+    habits: S.habits, logs: S.logs, workouts: S.workouts, activity: S.activity, dismissals: S.dismissals, today: today()
+  });
+  if (!changes.length) return;
+  for (const c of changes) {
+    S.logs = S.logs.filter((l) => !(l.habit_id === c.habit_id && l.day === c.day));
+    S.logs.push(c);
+  }
+  reindex();
+  render();
+  const newToday = changes.filter((c) => c.day === today() && c.value == null)
+    .map((c) => (S.habits.find((h) => h.id === c.habit_id) || {}).name).filter(Boolean);
+  if (newToday.length) toast(`${newToday.join(', ')} automatisch abgehakt – dank Withings.`);
+  for (const c of changes) await persist(() => db.setLog(c.habit_id, c.day, c.status, c.value, 'withings'));
+}
+
+async function syncWithings({ manual = false } = {}) {
+  if (!S.withings.connected || S.syncing) return;
+  const last = S.withings.last_sync_at ? new Date(S.withings.last_sync_at).getTime() : 0;
+  if (!manual && Date.now() - last < 10 * 60000) { await applyAuto(); return; }
+  S.syncing = true;
+  render();
+  try {
+    const res = await db.withings('sync');
+    if (res && res.needsReconnect) {
+      toast('Withings bitte neu verbinden (Profil) – der Zugang ist abgelaufen.');
+    } else if (res && res.last_sync_at) {
+      S.withings.last_sync_at = res.last_sync_at;
+      const fresh = await db.loadWithingsData();
+      // Ablehnungen zusammenführen – eine gerade erst gemerkte darf nicht durchs Neuladen verloren gehen
+      const keys = new Set(fresh.dismissals.map((d) => `${d.habit_id}|${d.day}`));
+      fresh.dismissals = [...fresh.dismissals, ...S.dismissals.filter((d) => !keys.has(`${d.habit_id}|${d.day}`))];
+      fresh.withings = { ...fresh.withings, last_sync_at: res.last_sync_at };
+      Object.assign(S, fresh);
+      if (manual) toast('Withings abgeglichen');
+    }
+  } catch (err) {
+    console.error(err);
+    if (manual) toast(`Abgleich hat nicht geklappt: ${err.message}`);
+  } finally {
+    S.syncing = false;
+  }
+  await applyAuto();
+  render();
+}
+
+function startWithingsLogin() {
+  if (!WITHINGS_CLIENT_ID) { toast('Die Withings Client ID fehlt noch in js/config.js.'); return; }
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  session.set('withings.state', state);
+  const url = 'https://account.withings.com/oauth2_user/authorize2?' + new URLSearchParams({
+    response_type: 'code', client_id: WITHINGS_CLIENT_ID, scope: 'user.activity,user.metrics',
+    redirect_uri: WITHINGS_REDIRECT, state
+  }).toString();
+  location.href = url;
+}
+
+// Rückkehr vom Withings-Login: ?code=…&state=… – der Code ist nur 30 Sekunden gültig, also sofort tauschen.
+async function handleWithingsReturn() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code) return;
+  history.replaceState(null, '', location.pathname + location.hash);
+  if (!state || state !== session.get('withings.state')) { toast('Withings-Anmeldung abgebrochen (ungültige Antwort).'); return; }
+  try {
+    await db.withings('connect', { code, redirect_uri: WITHINGS_REDIRECT });
+    toast('Withings verbunden – hole deine Daten …');
+    S.withings = { connected: true, last_sync_at: null };
+  } catch (err) {
+    console.error(err);
+    toast(`Withings-Verbindung fehlgeschlagen: ${err.message}`);
+  }
 }
 
 function cycleCheck(habitId, day) {
@@ -188,8 +289,17 @@ function readHabitForm(form) {
     min: fd.get('min'),
     mini_text: fd.get('mini_text'),
     mini_value: fd.get('mini_value'),
-    start_day: fd.get('start_day') ? String(fd.get('start_day')) : undefined
+    start_day: fd.get('start_day') ? String(fd.get('start_day')) : undefined,
+    // Automatik (nur vorhanden, wenn der Abschnitt sichtbar ist)
+    auto_on: form.querySelector('[name="auto_on"]') ? fd.get('auto_on') === 'on' : undefined,
+    auto_groups: form.querySelector('[name="auto_groups"]') ? fd.getAll('auto_groups').map(String) : undefined,
+    auto_min: fd.get('auto_min'),
+    auto_metric: form.querySelector('[name="auto_metric"]') ? String(fd.get('auto_metric') || '') : undefined
   };
+}
+
+function groupsToCats(groups) {
+  return CATEGORY_GROUPS.filter((g) => groups.includes(g.id)).flatMap((g) => g.cats);
 }
 
 function num(v) {
@@ -213,6 +323,9 @@ async function submitHabit(form) {
     return err(`Die Mini-Zahl muss zwischen 1 und ${goal} liegen.`);
   }
   const schedMin = periodic && minRaw != null && Math.round(minRaw) < goal ? Math.round(minRaw) : null;
+  if (f.kind === 'check' && f.auto_on && !(f.auto_groups && f.auto_groups.length)) {
+    return err('Bitte mindestens eine Trainingsart fürs automatische Abhaken wählen.');
+  }
 
   const btn = form.querySelector('button[type="submit"]');
   if (btn) btn.disabled = true;
@@ -245,6 +358,19 @@ async function submitHabit(form) {
     mini_value: f.kind === 'count' ? num(f.mini_value) : null,
     start_day: f.start_day
   };
+  if (S.hasWithingsSchema) {
+    if (f.kind === 'check') {
+      habit.auto_categories = f.auto_on ? groupsToCats(f.auto_groups || []) : null;
+      habit.auto_min_minutes = f.auto_on ? Math.max(0, Math.round(num(f.auto_min) || 0)) : null;
+      habit.auto_metric = null;
+    } else {
+      habit.auto_metric = f.auto_metric || null;
+      habit.auto_categories = null;
+      habit.auto_min_minutes = null;
+    }
+  } else {
+    delete habit.auto_categories; delete habit.auto_min_minutes; delete habit.auto_metric;
+  }
   if (!existing) {
     habit.archived = false;
     habit.sort_order = S.habits.length;
@@ -253,6 +379,7 @@ async function submitHabit(form) {
   if (!saved) { if (btn) btn.disabled = false; return; }
   S.habits = existing ? S.habits.map((h) => (h.id === saved.id ? saved : h)) : [...S.habits, saved];
   S.form = null;
+  applyAuto();
   const later = saved.start_day > today();
   toast(existing ? 'Gespeichert' : (later ? 'Angelegt – startet am gewählten Tag.' : 'Angelegt – viel Erfolg!'));
   go(existing ? '#/habit/' + saved.id : '#/');
@@ -370,6 +497,29 @@ root.addEventListener('click', async (e) => {
       local.set('hint.' + id, el.dataset.count);
       render();
       break;
+    case 'withings-connect':
+      startWithingsLogin(); break;
+    case 'withings-sync':
+      await syncWithings({ manual: true }); break;
+    case 'withings-disconnect': {
+      if (!confirm('Withings trennen? Deine bisherigen Schritte und Trainings bleiben gespeichert.')) break;
+      try {
+        await db.withings('disconnect');
+        S.withings = { connected: false };
+        toast('Withings getrennt');
+      } catch (err) { toast(`Trennen hat nicht geklappt: ${err.message}`); }
+      render();
+      break;
+    }
+    case 'tile-toggle': {
+      if (!S.profile) break;
+      const tiles = new Set(S.profile.tiles || ['steps', 'training']);
+      if (tiles.has(id)) tiles.delete(id); else tiles.add(id);
+      S.profile.tiles = ['steps', 'training', 'active', 'distance'].filter((k) => tiles.has(k));
+      render();
+      if (S.hasWithingsSchema) await persist(() => db.updateProfile(S.profile.id, { tiles: S.profile.tiles }));
+      break;
+    }
     case 'logout':
       await db.signOut(); break;
     case 'welcome-toggle':
@@ -462,6 +612,7 @@ root.addEventListener('keydown', (e) => {
 async function afterLogin() {
   S.loaded = false;
   render();
+  await handleWithingsReturn();
   try {
     await reload();
   } catch (err) {
@@ -475,7 +626,13 @@ async function afterLogin() {
     location.hash = '#/welcome';
   }
   render();
+  syncWithings(); // im Hintergrund
 }
+
+// Zurück in die App (z. B. nach dem Training): Withings erneut abgleichen
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.loaded) syncWithings();
+});
 
 async function start() {
   root.innerHTML = V.loading();

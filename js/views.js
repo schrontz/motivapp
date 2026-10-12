@@ -4,6 +4,39 @@
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS, COLORS } from './icons.js';
 import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, parseDay } from './dates.js';
 import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint } from './stats.js';
+import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories } from './auto.js';
+
+function hm(min) {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+function timeOf(iso) {
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function tilesSection(S, T) {
+  const show = (S.profile && S.profile.tiles) || ['steps', 'training'];
+  if (!(S.withings && S.withings.connected) && !S.activity.length) return '';
+  if (!show.length) return '';
+  const v = tileValues({ activity: S.activity, workouts: S.workouts, today: T });
+  const defs = {
+    steps: { label: 'Schritte', icon: HABIT_ICONS.steps.path, color: 'teal', value: v.steps.value != null ? fmt(v.steps.value) : '–', sub: v.steps.avg7 != null ? `heute · Ø 7 Tage ${fmt(v.steps.avg7)}` : 'heute' },
+    training: { label: 'Training', icon: HABIT_ICONS.dumbbell.path, color: 'blue', value: `${v.training.count}×`, sub: `letzte 7 Tage${v.training.minutes ? ' · ' + hm(v.training.minutes) : ''}` },
+    active: { label: 'Aktive Minuten', icon: HABIT_ICONS.run.path, color: 'orange', value: v.active.value != null ? `${v.active.value} min` : '–', sub: 'heute · mittel + intensiv' },
+    distance: { label: 'Strecke', icon: HABIT_ICONS.run.path, color: 'purple', value: v.distance.value != null ? `${fmt(v.distance.value)} km` : '–', sub: 'heute' }
+  };
+  const tiles = show.filter((k) => defs[k]).map((k) => {
+    const d = defs[k];
+    return `<div class="card tile">
+      <div class="tile-head" style="color: var(--c-${d.color})">${svg(d.icon, 18)}<span>${d.label}</span></div>
+      <div class="tile-val">${d.value}</div>
+      <div class="small muted">${d.sub}</div>
+    </div>`;
+  }).join('');
+  return `<section class="tiles" aria-label="Kennzahlen">${tiles}</section>`;
+}
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -66,8 +99,16 @@ function habitRow(S, item) {
   } else if (!item.sub && h.mini_text) {
     sub = `${scheduleText(h)} · Mini: ${h.mini_text}`;
   }
+  const auto = log && log.source === 'withings';
+  if (auto && h.kind === 'check') {
+    const w = S.workouts.find((x) => x.day === log.day && workoutCounts(h, x));
+    if (w) sub = `${categoryName(w.category)} ${timeOf(w.start_at)} · ${Math.round(w.duration_min)} Min · von Withings` + (item.sub ? ` · ${item.sub}` : '');
+  } else if (auto && h.kind === 'count') {
+    sub += ' · von Withings';
+  }
   const p = item.period;
   const pills = [
+    auto ? '<span class="pill auto">Auto</span>' : '',
     item.state === 'mini' ? '<span class="pill">Mini</span>' : '',
     p && p.state === 'mini' ? `<span class="pill">${miniPeriodName(h)}</span>` : '',
     p && p.state === 'goal' ? '<span class="pill goal">Ziel</span>' : '',
@@ -146,6 +187,7 @@ export function overview(S, T) {
     ${chips}
     <div class="wrap">
       ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30))}
+      ${tilesSection(S, T)}
       <section class="total">
         <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
         <div><div class="big">${fmt(total)} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
@@ -261,10 +303,43 @@ export function detail(S, T, id) {
           ${st.months.map((m) => `<div><div class="small" style="font-weight: 600">${m.count}</div><div class="b${m.running ? ' running' : ''}" style="height: ${Math.round(m.count / maxBar * 100)}px"></div><div class="small muted">${monthShort(m.key)}</div></div>`).join('')}
         </div>
       </section>
+      ${trainingsSection(S, h, T)}
     </div>
     ${nav('habits')}
     ${S.sheet ? sheet(S, T) : ''}
   </div>`;
+}
+
+function trainingsSection(S, h, T) {
+  if (!(h.auto_categories && h.auto_categories.length)) return '';
+  const from = new Date(parseDay(T).getTime() - 30 * 86400000);
+  const fromDay = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+  const list = S.workouts.filter((w) => w.day >= fromDay && w.day <= T).sort((a, b) => (a.start_at < b.start_at ? 1 : -1));
+  const body = list.length === 0
+    ? '<p class="hint" style="padding: 14px">Noch keine Trainings von Withings in den letzten 30 Tagen.</p>'
+    : list.map((w) => {
+      const dt = parseDay(w.day);
+      const counts = workoutCounts(h, w);
+      const why = !counts && matchesCategories(w.category, h.auto_categories) ? ' · zu kurz' : '';
+      return `<details class="wo">
+        <summary>
+          <div class="wo-date"><div class="small muted" style="font-weight: 600">${WEEKDAYS_SHORT[(dt.getDay() + 6) % 7]}</div><div style="font-size: 18px; font-weight: 700">${dt.getDate()}.</div></div>
+          <div style="flex: 1; min-width: 0">
+            <div class="row-title"><span>${esc(categoryName(w.category))}</span>${counts ? '<span class="pill goal">zählt</span>' : ''}</div>
+            <div class="row-sub">${timeOf(w.start_at)} · ${Math.round(w.duration_min)} Min${w.hr_avg ? ` · Ø ${w.hr_avg} bpm` : ''}${why}</div>
+          </div>
+        </summary>
+        <div class="wo-body">
+          <div class="wo-stat"><div class="small muted">Ø Puls</div><b>${w.hr_avg ?? '–'}</b></div>
+          <div class="wo-stat"><div class="small muted">max.</div><b>${w.hr_max ?? '–'}</b></div>
+          <div class="wo-stat"><div class="small muted">kcal</div><b>${w.calories != null ? Math.round(w.calories) : '–'}</b></div>
+        </div>
+      </details>`;
+    }).join('');
+  return `<section style="display: flex; flex-direction: column; gap: 10px">
+    <div class="section-head"><h2 style="font-size: 17px">Trainings</h2><span class="small muted">von Withings · 30 Tage</span></div>
+    <div class="card list">${body}</div>
+  </section>`;
 }
 
 function periodsCard(h, periods, col) {
@@ -396,12 +471,107 @@ export function habitForm(S, T, id) {
           : `<div class="field"><label for="f-minitext">Was ist die Mini-Version?</label><input id="f-minitext" class="input" name="mini_text" maxlength="60" value="${esc(f.mini_text ?? h.mini_text ?? '')}" placeholder="z. B. 5 Minuten"></div>`}
       </section>
 
+      ${S.hasWithingsSchema ? autoSection(S, h, f, kind) : ''}
+
       <p class="hint" style="padding: 0 4px">Steigerung und Erinnerungen kommen in einer der nächsten Versionen.</p>
       <p id="form-error" class="small" style="color: var(--danger); padding: 0 4px" role="alert"></p>
       <button type="submit" class="btn">${editing ? 'Speichern' : 'Gewohnheit anlegen'}</button>
       ${editing ? '<button type="button" class="btn danger" data-action="archive" data-id="' + esc(editing.id) + '">Gewohnheit entfernen</button><p class="hint" style="text-align: center">Bisherige Einträge bleiben in deiner Gesamtzahl erhalten.</p>' : ''}
     </form>
   </div>`;
+}
+
+function autoSection(S, h, f, kind) {
+  const connected = S.withings && S.withings.connected;
+  const note = connected ? '' : '<p class="hint">Funktioniert, sobald Withings im Profil verbunden ist.</p>';
+  if (kind === 'count') {
+    const cur = f.auto_metric ?? h.auto_metric ?? '';
+    return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="font-size: 15px">Wert von Withings übernehmen</h2>
+      <div class="field"><label for="f-metric">Woher kommt die Zahl?</label>
+        <select id="f-metric" class="input" name="auto_metric">
+          <option value="">Ich trage selbst ein</option>
+          ${Object.entries(METRICS).map(([k, m]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${m.label}${m.unit !== m.label ? ' (' + m.unit + ')' : ''}</option>`).join('')}
+        </select></div>
+      <p class="hint">Die Zahl füllt sich dann von selbst. Trägst du selbst etwas ein, hat deine Zahl Vorrang.</p>
+      ${note}
+    </section>`;
+  }
+  const on = f.auto_on ?? !!(h.auto_categories && h.auto_categories.length);
+  const cats = h.auto_categories || [16, 17];
+  const groups = f.auto_groups ?? CATEGORY_GROUPS.filter((g) => g.cats.some((c) => cats.includes(c))).map((g) => g.id);
+  const found = new Map();
+  for (const w of S.workouts) found.set(w.category, (found.get(w.category) || 0) + 1);
+  const foundText = [...found.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c, n]) => `${categoryName(c)} ${n}×`).join(', ');
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+    <label class="switch-row">
+      <span><span style="display: block; font-size: 15px; font-weight: 700">Automatisch abhaken</span><span class="hint">wenn Withings ein passendes Training erkennt</span></span>
+      <input type="checkbox" class="sw-input" name="auto_on" data-action="form-change"${on ? ' checked' : ''}>
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+    ${on ? `
+      <span class="label">Welche Trainingsarten zählen?</span>
+      <div class="opts" role="group" aria-label="Trainingsarten">
+        ${CATEGORY_GROUPS.map((g) => `<label class="opt"><input type="checkbox" name="auto_groups" value="${g.id}"${groups.includes(g.id) ? ' checked' : ''}><span>${g.label}</span></label>`).join('')}
+      </div>
+      <div class="switch-row" style="cursor: default">
+        <label for="f-automin" style="font-size: 15px; font-weight: 500">Mindestens</label>
+        <span style="display: flex; align-items: center; gap: 8px"><input id="f-automin" class="input" name="auto_min" type="number" inputmode="numeric" min="0" value="${esc(f.auto_min ?? h.auto_min_minutes ?? 20)}" style="width: 80px; text-align: center">Minuten</span>
+      </div>
+      ${foundText ? `<p class="hint">In deinen Withings-Daten: ${esc(foundText)}</p>` : ''}
+      <p class="hint">Einen automatischen Haken kannst du jederzeit zurücknehmen – er kommt dann nicht wieder.</p>` : ''}
+    ${note}
+  </section>`;
+}
+
+function ago(iso) {
+  if (!iso) return 'noch nie';
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return 'gerade eben';
+  if (min < 60) return `vor ${min} Minute${min === 1 ? '' : 'n'}`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `vor ${h} Stunde${h === 1 ? '' : 'n'}`;
+  const d = Math.round(h / 24);
+  return `vor ${d} Tag${d === 1 ? '' : 'en'}`;
+}
+
+function withingsCard(S) {
+  if (!S.hasWithingsSchema) {
+    return `<section class="card pad"><b>Withings</b><p class="hint" style="margin-top: 4px">Bitte zuerst das Datenbank-Update <code>003_withings.sql</code> im Supabase SQL-Editor ausführen.</p></section>`;
+  }
+  const w = S.withings || {};
+  const status = S.syncing ? 'Gleicht gerade ab …' : (w.connected ? `Verbunden · zuletzt abgeglichen ${ago(w.last_sync_at)}` : 'Nicht verbunden');
+  const tiles = new Set((S.profile && S.profile.tiles) || ['steps', 'training']);
+  const tileDefs = [
+    ['steps', 'Schritte', 'heute · Withings'],
+    ['training', 'Training', 'letzte 7 Tage · Withings'],
+    ['active', 'Aktive Minuten', 'heute · Withings'],
+    ['distance', 'Strecke', 'heute · Withings']
+  ];
+  return `<section style="display: flex; flex-direction: column; gap: 10px">
+    <h2 class="h3">Verbindungen</h2>
+    <div class="card pad" style="display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div class="hicon" style="width: 44px; height: 44px; border-radius: 14px; background: var(--soft)">${svg('M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM9 6V3h6v3M9 18v3h6v-3M12 9v3l2 1', 22)}</div>
+        <div style="flex: 1"><div style="font-size: 16px; font-weight: 700">Withings</div><div class="small" style="color: ${w.connected ? 'var(--mini-fg)' : 'var(--muted)'}">${status}</div></div>
+      </div>
+      ${w.connected
+        ? `<div class="grid2">
+            <button type="button" class="btn ghost" data-action="withings-sync"${S.syncing ? ' disabled' : ''}>Jetzt abgleichen</button>
+            <button type="button" class="btn danger" data-action="withings-disconnect">Trennen</button>
+          </div>
+          <p class="hint">Abgleich passiert automatisch, wenn du die App öffnest.</p>`
+        : `<p class="hint">Schritte und Trainings deiner Uhr kommen dann automatisch in die App. Du meldest dich dafür einmal bei Withings an und tippst auf „Erlauben“.</p>
+          <button type="button" class="btn" data-action="withings-connect">Mit Withings verbinden</button>`}
+    </div>
+    <h2 class="h3" style="margin-top: 6px">Kacheln auf der Übersicht</h2>
+    <div class="card list">
+      ${tileDefs.map(([id, label, src]) => `<div class="cat-row" style="justify-content: space-between">
+        <div><div style="font-size: 16px; font-weight: 600">${label}</div><div class="small muted">${src}</div></div>
+        <button type="button" class="switch" role="switch" aria-checked="${tiles.has(id)}" aria-label="${label} anzeigen" data-action="tile-toggle" data-id="${id}"></button>
+      </div>`).join('')}
+    </div>
+  </section>`;
 }
 
 // ───────────── Profil ─────────────
@@ -429,13 +599,13 @@ export function profile(S, email) {
           <button type="submit" class="icon-btn" aria-label="Kategorie hinzufügen">${svg(UI_ICONS.plus)}</button>
         </form>
       </section>
+      ${withingsCard(S)}
       <section style="display: flex; flex-direction: column; gap: 10px">
         <h2 class="h3">Deine Daten</h2>
         <button type="button" class="btn ghost" data-action="export">Alle Daten herunterladen</button>
         <p class="hint" style="padding: 0 4px">Speichert alles als Datei – als Sicherung oder zum Mitnehmen.</p>
       </section>
       <button type="button" class="btn danger" data-action="logout">Abmelden</button>
-      <p class="hint" style="text-align: center">Kacheln für Schritte, Training und Gewicht kommen mit der Withings-Anbindung.</p>
     </div>
     ${nav('profile')}
   </div>`;
