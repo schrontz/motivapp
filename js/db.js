@@ -101,7 +101,23 @@ export async function withings(action, extra = {}) {
     if (action === 'sync') return { connected: true, last_sync_at: new Date().toISOString() };
     return { connected: action !== 'disconnect' };
   }
-  const { data, error } = await client.functions.invoke('withings', { body: { action, ...extra } });
+  // Funktionsnamen unterscheiden Groß-/Kleinschreibung – beide probieren, den funktionierenden merken
+  let remembered = null;
+  try { remembered = localStorage.getItem('motivator.withings.fn'); } catch { /* egal */ }
+  const names = [...new Set([remembered, 'withings', 'Withings'].filter(Boolean))];
+  let data = null;
+  let error = null;
+  for (const name of names) {
+    ({ data, error } = await client.functions.invoke(name, { body: { action, ...extra } }));
+    const notFound = error && (error.name === 'FunctionsFetchError' || (error.context && error.context.status === 404));
+    if (!notFound) {
+      if (!error) { try { localStorage.setItem('motivator.withings.fn', name); } catch { /* egal */ } }
+      break;
+    }
+  }
+  if (error && error.name === 'FunctionsFetchError') {
+    throw new Error('Die Server-Funktion ist nicht erreichbar (Name „withings“? Deployt? „Verify JWT“ aus?).');
+  }
   if (error) {
     let detail = '';
     try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
