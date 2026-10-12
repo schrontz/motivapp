@@ -6,4 +6,4 @@
 - Regeln der Statistik (siehe `js/stats.js`): Mini zählt als geschafft, Pausentage zählen nicht, heute zählt erst, wenn geschafft; Quote statt Streak.
 - Nie den service_role-Key ins Frontend.
 - Vor dem Push: `npm test` und die App im Demo-Modus (`?demo`) im Browser prüfen.
-- Bei jeder Änderung an gecachten Dateien die Cache-Version in `sw.js` erhöhen.
+- Bei jeder Änderung an gecachten Dateien die Cache-Version in `sw.js` UND `APP_VERSION` in `js/config.js` erhöhen (steht im Profil – so sieht Jan, welcher Stand läuft).

@@ -5,6 +5,7 @@ import { svg, habitIcon, HABIT_ICONS, UI_ICONS, COLORS } from './icons.js';
 import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, parseDay } from './dates.js';
 import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint } from './stats.js';
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories } from './auto.js';
+import { APP_VERSION } from './config.js';
 
 function hm(min) {
   const h = Math.floor(min / 60);
@@ -606,6 +607,7 @@ export function profile(S, email) {
         <p class="hint" style="padding: 0 4px">Speichert alles als Datei – als Sicherung oder zum Mitnehmen.</p>
       </section>
       <button type="button" class="btn danger" data-action="logout">Abmelden</button>
+      <p class="small muted" style="text-align: center">Version ${APP_VERSION}</p>
     </div>
     ${nav('profile')}
   </div>`;

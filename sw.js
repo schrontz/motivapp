@@ -1,6 +1,6 @@
 // Service Worker: App funktioniert auch bei wackeligem Netz.
 // Strategie: erst Netz (damit Updates sofort ankommen), bei Fehler der letzte Stand aus dem Cache.
-const CACHE = 'motivator-v6';
+const CACHE = 'motivator-v7';
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/views.js', './js/stats.js', './js/dates.js', './js/db.js', './js/icons.js', './js/config.js', './js/auto.js',
@@ -8,7 +8,10 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' – am Browser-Cache vorbei, sonst landet eine bis zu 10 Min. alte Version von GitHub Pages im Cache
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -36,7 +39,8 @@ self.addEventListener('fetch', (e) => {
   }
   if (!sameOrigin) return; // Supabase-Anfragen nie cachen
   e.respondWith(
-    fetch(req).then((res) => {
+    // no-cache: beim Server nachfragen, ob es eine neuere Version gibt (sonst liefert der Browser-Cache Altes)
+    fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));

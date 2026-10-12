@@ -665,5 +665,15 @@ async function start() {
 start();
 
 if ('serviceWorker' in navigator && !db.isDemo) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  // Neue Version übernommen → einmal neu laden, damit sofort der neue Code läuft
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .then((reg) => reg.update())
+    .catch(() => {});
 }

@@ -1,6 +1,9 @@
 // Öffentliche Verbindungsdaten. Beide Werte dürfen im Frontend stehen –
 // die Daten schützt Supabase per Login und Row Level Security.
 // NIEMALS hier den service_role-Key eintragen.
+// Bei jedem Update hochzählen – steht unten im Profil, damit man sieht, welcher Stand läuft
+export const APP_VERSION = '2026-10-12.7';
+
 export const SUPABASE_URL = 'https://msjvorshfezbcsomsvmj.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_lz1mNSlqqLuUvOhW77VGaw_j2xbbWyp';
 // Withings: Client ID ist öffentlich (steht auch in der Login-Adresse). Das Secret liegt NUR in Supabase.
