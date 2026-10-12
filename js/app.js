@@ -210,7 +210,8 @@ async function syncWithings({ manual = false } = {}) {
 function startWithingsLogin() {
   if (!WITHINGS_CLIENT_ID) { toast('Die Withings Client ID fehlt noch in js/config.js.'); return; }
   const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  session.set('withings.state', state);
+  // Geräteweit merken (nicht nur im Tab): Nach dem Withings-Login landet man auf Android oft in einem neuen Tab
+  local.set('withings.state', JSON.stringify({ state, at: Date.now() }));
   const url = 'https://account.withings.com/oauth2_user/authorize2?' + new URLSearchParams({
     response_type: 'code', client_id: WITHINGS_CLIENT_ID, scope: 'user.activity,user.metrics',
     redirect_uri: WITHINGS_REDIRECT, state
@@ -225,7 +226,14 @@ async function handleWithingsReturn() {
   const state = params.get('state');
   if (!code) return;
   history.replaceState(null, '', location.pathname + location.hash);
-  if (!state || state !== session.get('withings.state')) { toast('Withings-Anmeldung abgebrochen (ungültige Antwort).'); return; }
+  let saved = null;
+  try { saved = JSON.parse(local.get('withings.state') || 'null'); } catch { saved = null; }
+  local.set('withings.state', '');
+  const fresh = saved && Date.now() - saved.at < 15 * 60000;
+  if (!state || !fresh || state !== saved.state) {
+    toast('Withings-Anmeldung konnte nicht bestätigt werden – bitte im Profil noch einmal „Mit Withings verbinden“ tippen.');
+    return;
+  }
   try {
     await db.withings('connect', { code, redirect_uri: WITHINGS_REDIRECT });
     toast('Withings verbunden – hole deine Daten …');
