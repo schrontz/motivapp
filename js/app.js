@@ -76,7 +76,7 @@ function render() {
   const r = route();
   let html;
   switch (r.name) {
-    case 'habits': html = V.habitsList(S); break;
+    case 'habits': html = V.habitsList(S, T); break;
     case 'habit': html = V.detail(S, T, r.id); break;
     case 'new': html = V.habitForm(S, T, null); break;
     case 'edit': html = V.habitForm(S, T, r.id); break;
@@ -180,7 +180,8 @@ function readHabitForm(form) {
     days: form.querySelector('input[name="days"]') ? fd.getAll('days').map(Number) : undefined,
     count: fd.get('count'),
     mini_text: fd.get('mini_text'),
-    mini_value: fd.get('mini_value')
+    mini_value: fd.get('mini_value'),
+    start_day: fd.get('start_day') ? String(fd.get('start_day')) : undefined
   };
 }
 
@@ -197,6 +198,7 @@ async function submitHabit(form) {
   if (f.kind === 'count' && !(num(f.target) > 0)) return err('Bitte ein Tagesziel größer als 0 eintragen.');
   if (f.schedule === 'weekdays' && !(f.days && f.days.length)) return err('Bitte mindestens einen Wochentag wählen.');
   if (f.category === '__new' && !f.newcat.trim()) return err('Bitte einen Namen für die neue Kategorie eingeben.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.start_day || '')) return err('Bitte ein Startdatum wählen.');
 
   const btn = form.querySelector('button[type="submit"]');
   if (btn) btn.disabled = true;
@@ -225,10 +227,10 @@ async function submitHabit(form) {
     schedule_days: f.schedule === 'weekdays' ? f.days : null,
     schedule_count: f.schedule === 'per_week' || f.schedule === 'per_month' ? Math.max(1, Math.round(num(f.count) || 1)) : null,
     mini_text: f.kind === 'check' ? (f.mini_text || '').toString().trim() || null : null,
-    mini_value: f.kind === 'count' ? num(f.mini_value) : null
+    mini_value: f.kind === 'count' ? num(f.mini_value) : null,
+    start_day: f.start_day
   };
   if (!existing) {
-    habit.start_day = today();
     habit.archived = false;
     habit.sort_order = S.habits.length;
   }
@@ -236,7 +238,8 @@ async function submitHabit(form) {
   if (!saved) { if (btn) btn.disabled = false; return; }
   S.habits = existing ? S.habits.map((h) => (h.id === saved.id ? saved : h)) : [...S.habits, saved];
   S.form = null;
-  toast(existing ? 'Gespeichert' : 'Angelegt – viel Erfolg!');
+  const later = saved.start_day > today();
+  toast(existing ? 'Gespeichert' : (later ? 'Angelegt – startet am gewählten Tag.' : 'Angelegt – viel Erfolg!'));
   go(existing ? '#/habit/' + saved.id : '#/');
 }
 

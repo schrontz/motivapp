@@ -235,7 +235,7 @@ export function detail(S, T, id) {
 
 // ───────────── Alle Gewohnheiten ─────────────
 
-export function habitsList(S) {
+export function habitsList(S, T) {
   const active = S.habits.filter((h) => !h.archived);
   const groups = S.categories.map((c) => ({ name: c.name, items: active.filter((h) => h.category_id === c.id) }));
   groups.push({ name: 'Ohne Kategorie', items: active.filter((h) => !S.categories.some((c) => c.id === h.category_id)) });
@@ -247,7 +247,7 @@ export function habitsList(S) {
         const col = colorOf(S, h);
         return `<a class="row" href="#/habit/${esc(h.id)}" style="text-decoration: none; color: inherit">
           <div class="hicon" style="background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon)}</div>
-          <div class="row-main"><div class="row-title"><span>${esc(h.name)}</span></div><div class="row-sub">${esc(scheduleText(h))}${h.kind === 'count' ? ` · Ziel ${fmt(h.target)}${h.unit ? ' ' + esc(h.unit) : ''}` : ''}</div></div>
+          <div class="row-main"><div class="row-title"><span>${esc(h.name)}</span>${h.start_day > T ? `<span class="pill pause">ab ${parseDay(h.start_day).getDate()}. ${monthShort(h.start_day.slice(0, 7))}</span>` : ''}</div><div class="row-sub">${esc(scheduleText(h))}${h.kind === 'count' ? ` · Ziel ${fmt(h.target)}${h.unit ? ' ' + esc(h.unit) : ''}` : ''}</div></div>
           <span class="muted" style="transform: rotate(180deg); display: flex">${svg(UI_ICONS.back, 18)}</span>
         </a>`;
       }).join('')}</div>`).join('');
@@ -321,6 +321,11 @@ export function habitForm(S, T, id) {
           <label for="f-count">Wie oft ${schedule === 'per_week' ? 'pro Woche' : 'pro Monat'}?</label>
           <input id="f-count" class="input" name="count" type="number" inputmode="numeric" min="1" max="${schedule === 'per_week' ? 7 : 31}" value="${esc(f.count ?? h.schedule_count ?? 3)}">
         </div>` : ''}
+        <div class="card pad field">
+          <label for="f-start">Ab wann?</label>
+          <input id="f-start" class="input" name="start_day" type="date" value="${esc(f.start_day ?? h.start_day ?? T)}" required>
+          <p class="hint">Vorher zählt nichts – weder als geschafft noch als verpasst.</p>
+        </div>
       </section>
 
       <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
