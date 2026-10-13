@@ -88,7 +88,17 @@ function go(hash) {
   else location.hash = hash;
 }
 
-window.addEventListener('hashchange', () => {
+// Zurück statt vorwärts: Kommt man von `hash`, einen Schritt zurück – sonst die Seite ersetzen.
+// So landet man nach „Speichern“ nicht in einer Schleife (Übung → Plan → Übung → Zurück → Plan).
+let lastHash = '';
+function goBackTo(hash) {
+  const same = (a, b) => { try { return decodeURIComponent(a) === decodeURIComponent(b); } catch { return a === b; } };
+  if (same(lastHash, hash)) history.back();
+  else location.replace(location.pathname + location.search + hash);
+}
+
+window.addEventListener('hashchange', (e) => {
+  try { lastHash = new URL(e.oldURL).hash; } catch { lastHash = ''; }
   S.sheet = null;
   S.form = null;
   const r = route();
@@ -457,7 +467,7 @@ async function savePlanDraft() {
   S.plans = [...(S.plans || []).filter((x) => x.id !== saved.id), saved];
   S.planDraft = null;
   toast(ex ? 'Plan gespeichert' : 'Plan angelegt – viel Erfolg!');
-  go('#/exercise/' + encodeURIComponent(d.key));
+  goBackTo('#/exercise/' + encodeURIComponent(d.key));
 }
 
 async function deletePlanDraft() {
@@ -466,7 +476,7 @@ async function deletePlanDraft() {
   if (!confirm('Plan löschen? Dein Verlauf bleibt.')) return;
   S.plans = S.plans.filter((x) => x.id !== d.existing.id);
   S.planDraft = null;
-  go('#/exercise/' + encodeURIComponent(d.key));
+  goBackTo('#/exercise/' + encodeURIComponent(d.key));
   await persist(() => db.deletePlan(d.existing.id));
 }
 
@@ -754,6 +764,10 @@ root.addEventListener('click', async (e) => {
       stepPlan(id, Number(el.dataset.delta)); break;
     case 'plan-save':
       await savePlanDraft(); break;
+    case 'plan-cancel':
+      S.planDraft = null;
+      goBackTo('#/exercise/' + encodeURIComponent(id));
+      break;
     case 'plan-delete':
       await deletePlanDraft(); break;
     case 'import-go':

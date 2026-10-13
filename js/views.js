@@ -703,7 +703,7 @@ export function planForm(S, T, key) {
   const every = Number(p.every_weeks) === 1 ? 'jede Woche' : `alle ${p.every_weeks} Wochen`;
   const items = [...pv.items.slice(0, -1), { txt: `${kgTxt(pv.nextKg)} kg × ${p.start_reps}`, state: 'final' }];
   return `<div class="app">
-    <div class="bar"><a class="link-btn" href="#/exercise/${encodeURIComponent(key)}">${svg(UI_ICONS.back, 20, 2.2)}${esc(p.exercise)}</a><span></span></div>
+    <div class="bar"><button type="button" class="link-btn" data-action="plan-cancel" data-id="${esc(key)}">${svg(UI_ICONS.back, 20, 2.2)}${esc(p.exercise)}</button><span></span></div>
     <div class="wrap" style="gap: 12px">
       <div style="padding: 0 4px"><h1 style="font-size: 28px">Steigerung einrichten</h1><div class="small muted" style="font-size: 14px">${esc(p.exercise)}${p.equipment ? ' · ' + esc(p.equipment) : ''}</div></div>
       <section class="card" style="padding: 4px 16px">${rows}</section>
@@ -720,7 +720,7 @@ export function planForm(S, T, key) {
       </section>
       <p class="small" style="color: var(--danger); min-height: 18px" id="form-error" role="alert"></p>
       <button type="button" class="btn" data-action="plan-save">Speichern</button>
-      ${d.existing ? '<button type="button" class="btn danger" data-action="plan-delete">Plan löschen – nur Verlauf zeigen</button>' : `<a class="btn ghost" href="#/exercise/${encodeURIComponent(key)}">Ohne Plan – nur Verlauf zeigen</a>`}
+      ${d.existing ? '<button type="button" class="btn danger" data-action="plan-delete">Plan löschen – nur Verlauf zeigen</button>' : `<button type="button" class="btn ghost" data-action="plan-cancel" data-id="${esc(key)}">Ohne Plan – nur Verlauf zeigen</button>`}
     </div>
     ${nav('overview')}
   </div>`;
