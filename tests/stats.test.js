@@ -174,3 +174,10 @@ test('Häufigkeitstexte', () => {
   assert.equal(scheduleText(mwf), 'Mo, Mi, Fr');
   assert.equal(scheduleText(perWeek), '3× pro Woche');
 });
+
+test('Heute: Offenes oben, Erledigtes unten, Pausiertes ganz unten – sonst eigene Reihenfolge', async () => {
+  const { sortTodayItems } = await import('../js/stats.js');
+  const it = (id, extra = {}) => ({ habit: { id }, hit: false, paused: false, period: null, ...extra });
+  const list = [it('a', { hit: true }), it('b'), it('c', { paused: true }), it('d', { period: { state: 'goal' } }), it('e'), it('f', { hit: true })];
+  assert.deepEqual(sortTodayItems(list).map((i) => i.habit.id), ['b', 'e', 'a', 'd', 'f', 'c']);
+});

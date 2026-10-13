@@ -3,7 +3,7 @@
 
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS, COLORS } from './icons.js';
 import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, parseDay } from './dates.js';
-import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint, isoWeek } from './stats.js';
+import { todayItems, sortTodayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint, isoWeek } from './stats.js';
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
 import { FIELDS, series, change, latest, lastChange } from './body.js';
@@ -213,7 +213,7 @@ export function overview(S, T) {
   } else if (items.length === 0) {
     list = `<div class="empty"><b>Heute ist nichts geplant</b><p class="hint" style="margin-top: 4px">Genieß den freien Tag.</p></div>`;
   } else {
-    list = `<div class="card list">${items.map((i) => habitRow(S, i)).join('')}</div>`;
+    list = `<div class="card list">${sortTodayItems(items).map((i) => habitRow(S, i)).join('')}</div>`;
   }
 
   return `<div class="app">

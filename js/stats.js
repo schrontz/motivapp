@@ -147,6 +147,17 @@ export function todayItems(habits, idx, pauses, day) {
   return items;
 }
 
+// Reihenfolge in „Heute“: Offenes oben, Erledigtes (oder Wochenziel schon erreicht) darunter, Pausiertes ganz unten.
+// Innerhalb der Gruppen bleibt die eigene Reihenfolge erhalten.
+export function sortTodayItems(items) {
+  const rank = (i) => {
+    if (i.paused) return 2;
+    if (i.hit || (i.period && i.period.state === 'goal')) return 1;
+    return 0;
+  };
+  return items.map((i, n) => ({ i, n })).sort((a, b) => rank(a.i) - rank(b.i) || a.n - b.n).map((x) => x.i);
+}
+
 export function todayRing(items) {
   const counted = items.filter((i) => i.counted);
   return { done: counted.filter((i) => i.hit).length, due: counted.length };
