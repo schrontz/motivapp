@@ -163,3 +163,12 @@ export function latest(list, key, T) {
   const avg2w = recent.length ? Math.round((recent.reduce((a, p) => a + p.v, 0) / recent.length) * 10) / 10 : null;
   return { day: last.day, v: last.v, avg2w };
 }
+
+// Vergleich zur Messung davor (nur Information – schwankt von Tag zu Tag)
+export function lastChange(list, key) {
+  const s = series(list, key);
+  if (s.length < 2) return null;
+  const a = s[s.length - 1];
+  const b = s[s.length - 2];
+  return { day: a.day, prevDay: b.day, delta: Math.round((a.v - b.v) * 100) / 100 };
+}

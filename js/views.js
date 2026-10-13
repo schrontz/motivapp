@@ -6,7 +6,7 @@ import { longDate, greeting, monthName, monthShort, WEEKDAYS_SHORT, diffDays, pa
 import { todayItems, todayRing, windowQuota, totalHits, habitStats, scheduleText, logOf, isPaused, miniPeriodName, patternHint, isoWeek } from './stats.js';
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
-import { FIELDS, series, change, latest } from './body.js';
+import { FIELDS, series, change, latest, lastChange } from './body.js';
 import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview } from './strength.js';
 
 // Alpha Progression eingeschaltet (und Datenbank-Update 004 da)?
@@ -821,6 +821,15 @@ function changeTxt(points, f) {
   return `${sign}${numTxt(Math.abs(c), f.digits)}${f.unit ? ' ' + f.unit : ''}<br>im Schnitt seit ${parseDay(d).getDate()}. ${monthShort(d.slice(0, 7))}`;
 }
 
+function lastCmpTxt(list, f) {
+  const c = lastChange(list, f.key);
+  if (!c) return '';
+  const d = parseDay(c.day);
+  const p = parseDay(c.prevDay);
+  const sign = Math.abs(c.delta) < Math.pow(10, -f.digits) / 2 ? '±' : (c.delta > 0 ? '+' : '−');
+  return `<div class="small muted" style="margin-top: 2px">${WEEKDAYS_SHORT[(d.getDay() + 6) % 7]} ${d.getDate()}. ${monthShort(c.day.slice(0, 7))} · ${sign}${numTxt(Math.abs(c.delta), f.digits)}${f.unit ? ' ' + f.unit : ''} zum ${p.getDate()}. ${monthShort(c.prevDay.slice(0, 7))}</div>`;
+}
+
 export function bodyView(S, T) {
   const list = S.body || [];
   const range = BODY_RANGES.find((r) => r[0] === S.bodyRange) || BODY_RANGES[0];
@@ -832,7 +841,7 @@ export function bodyView(S, T) {
     const last = lastOf(f.key);
     return `<section class="card pad">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px">
-        <div><div class="small muted" style="font-weight: 600">${f.label}</div><div style="font-size: 28px; font-weight: 700; line-height: 1.15">${last ? numTxt(last.v, f.digits) + (f.unit ? ' ' + f.unit : '') : '–'}</div></div>
+        <div><div class="small muted" style="font-weight: 600">${f.label}</div><div style="font-size: 28px; font-weight: 700; line-height: 1.15">${last ? numTxt(last.v, f.digits) + (f.unit ? ' ' + f.unit : '') : '–'}</div>${lastCmpTxt(list, f)}</div>
         <div class="small muted" style="text-align: right; line-height: 1.4">${changeTxt(pts, f)}</div>
       </div>
       ${bodyChart(pts, f, range[2] ? fromDay : null, T)}

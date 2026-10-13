@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRenphoCsv, bodyPreview, series, change, latest, looksLikeRenpho, valueOf, FIELDS } from '../js/body.js';
+import { parseRenphoCsv, bodyPreview, series, change, latest, lastChange, looksLikeRenpho, valueOf, FIELDS } from '../js/body.js';
 
 // Ausschnitt im echten Renpho-Format (Kopfzeile gekürzt auf die echten Spaltennamen)
 const HEAD = 'Nr.,Datum,Zeitraum,Gewicht(kg),BMI,Körperfettanteil(%),Körperfettmasse(kg),Muskelanteil(%),Muskelmasse(kg),Skelettmuskelanteil(%),Skelettmuskelmasse(kg),Knochenanteil(%),Knochenmasse(kg),Proteinanteil(%),Proteinmasse(kg),Körperwasseranteil(%),Körperwassermasse(kg),Fettfreies Körpergewicht(kg),Subkutanes Fett(%),Viszeralfett,Grundumsatz(kcal),Stoffwechselalter,WHR (Taille-Hüfte-Verhältnis),Optimales Gewicht(kg),Gewichtsstufe,Körpertyp,Ziel zum optimalen Gewicht(kg),Ziel zur optimalen Muskelmasse(kg),Ziel zur optimalen Fettmasse(kg),Bemerkungen,';
@@ -65,5 +65,8 @@ test('Verlauf mit 2-Wochen-Schnitt, Änderung, letzter Wert', () => {
   assert.equal(series(list, 'fat_pct').length, 3, 'fehlende Werte werden übersprungen');
   assert.deepEqual(latest(list, 'weight', '2026-10-05'), { day: '2026-10-01', v: 83, avg2w: 83 });
   assert.equal(valueOf(list[2], 'fat_pct'), null);
+  assert.deepEqual(lastChange(list, 'weight'), { day: '2026-10-01', prevDay: '2026-09-20', delta: -1 });
+  assert.deepEqual(lastChange(list, 'fat_pct'), { day: '2026-10-01', prevDay: '2026-09-10', delta: 1 }, 'Tage ohne den Wert werden übersprungen');
+  assert.equal(lastChange(list.slice(0, 1), 'weight'), null);
   assert.ok(FIELDS.filter((f) => f.show === 'main').length === 3);
 });
