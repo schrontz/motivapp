@@ -170,7 +170,7 @@ test('Planvorschlag aus dem Verlauf (wie Jans Curls)', () => {
 test('Ziel-Pille einer einzelnen Einheit', () => {
   const sessions = [curls('2026-10-02', 7, 20), curls('2026-10-08', 7, 20)];
   const h = exerciseHistory(sessions, exerciseKey({ name: 'Curls', equipment: 'Kurzhanteln' }));
-  assert.deepEqual(sessionTarget(plan, h, h[1], '2026-10-12'), { reps: 20, kg: 7, sets: 3, ok: true });
+  assert.deepEqual(sessionTarget(plan, h, h[1], '2026-10-12'), { reps: 20, kg: 7, sets: 3, ok: true, mode: 'kg' });
   assert.equal(sessionTarget(null, h, h[1], '2026-10-12'), null);
 });
 
@@ -183,4 +183,37 @@ test('Plan zählt nie vor der Woche, in der er angelegt wurde', async () => {
   assert.equal(sessionTarget(old, h, h[0], '2026-10-12'), null, 'Einheit vor dem Plan bekommt keine Pille');
   assert.equal(sessionTarget(old, h, h[2], '2026-10-12').ok, true, 'Einheit in der Anlage-Woche zählt');
   assert.deepEqual([progress(old, h, '2026-10-12').current.reps], [20], 'erst eine Woche geschafft → festigen');
+});
+
+const plank = (day, ...secs) => ({ id: day, day, started_at: `${day}T07:30:00.000Z`, exercises: [{ name: 'Plank', equipment: 'Körpergewicht', kind: 'time', sets: secs.map((sec) => ({ sec })) }] });
+
+test('Steigerung in Sekunden: jede Woche +5 s, am Maximum bleibt es stehen', async () => {
+  const { planMode, planPreview } = await import('../js/strength.js');
+  const sessions = [plank('2026-09-30', 55, 55), plank('2026-10-07', 60, 58), plank('2026-10-08', 60, 61), plank('2026-10-14', 65, 65)];
+  const h = exerciseHistory(sessions, 'Plank|Körpergewicht');
+  assert.equal(planMode(h), 'sec');
+  const s = suggestPlan(h, '2026-10-14');
+  assert.deepEqual([s.sets, s.start_reps, s.plus_reps, s.every_weeks, s.kg, s.started_on], [2, 65, 5, 1, 0, '2026-10-12']);
+  const p = { sets: 2, start_reps: 55, kg: 0, plus_reps: 5, every_weeks: 1, max_reps: 65, kg_step: 1, started_on: '2026-09-28' };
+  const r = progress(p, h, '2026-10-21');
+  const wk = (d) => r.weeks.get(d);
+  assert.deepEqual([wk('2026-09-28').reps, wk('2026-09-28').result], [55, 'done']);
+  assert.deepEqual([wk('2026-10-05').reps, wk('2026-10-05').result], [60, 'done'], 'die bessere Einheit der Woche zählt');
+  assert.deepEqual([wk('2026-10-12').reps, wk('2026-10-12').result], [65, 'done']);
+  assert.deepEqual([r.current.reps, r.current.kg, r.current.atMax], [65, 0, true], 'am Maximum stehen bleiben, kein Gewicht');
+  assert.equal(r.weeksToNextKg, 0);
+  assert.equal(r.ladder.some((l) => /kg/.test(l.txt)), false);
+  assert.equal(r.ladder[r.ladder.length - 1].txt, '65 s');
+  const pv = planPreview({ ...p, max_reps: 70 }, 'sec');
+  assert.deepEqual(pv.items.map((i) => i.txt), ['55', '60', '65', '70 s']);
+  assert.equal(pv.weeks, 3);
+});
+
+test('Steigerung nur mit Wiederholungen (ohne Gewicht)', () => {
+  const lieg = (day, reps) => ({ id: day, day, started_at: `${day}T07:30:00.000Z`, exercises: [{ name: 'Liegestütze', equipment: 'Körpergewicht', kind: 'reps', sets: [{ reps }, { reps }] }] });
+  const h = exerciseHistory([lieg('2026-10-07', 12), lieg('2026-10-13', 12)], 'Liegestütze|Körpergewicht');
+  const s = suggestPlan(h, '2026-10-14');
+  assert.deepEqual([s.sets, s.start_reps, s.kg, s.plus_reps], [2, 12, 0, 2]);
+  const r = progress({ ...s, every_weeks: 1, started_on: '2026-10-05' }, h, '2026-10-14');
+  assert.deepEqual([r.weeks.get('2026-10-05').result, r.current.reps, r.current.done], ['done', 14, false]);
 });

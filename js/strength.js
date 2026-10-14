@@ -272,9 +272,26 @@ export function sessionTitle(w) {
 
 // ───────────── Steigerung ─────────────
 
-function weekOk(entries, target) {
+// Art des Plans aus der Übung: 'kg' (Gewicht × Wdh.), 'reps' (nur Wdh.) oder 'sec' (Zeit, z. B. Plank)
+export function planMode(history) {
+  const last = history.length ? history[history.length - 1].ex : null;
+  if (!last) return 'kg';
+  if (last.kind === 'time') return 'sec';
+  if (last.kind === 'reps') return 'reps';
+  return 'kg';
+}
+
+export function planModeOk(kind) {
+  return kind === 'kg_reps' || kind === 'reps' || kind === 'time';
+}
+
+function setValue(s, mode) {
+  return mode === 'sec' ? (s.sec ?? 0) : (s.reps ?? 0);
+}
+
+function weekOk(entries, target, mode = 'kg') {
   return entries.some((h) => {
-    const good = (h.ex.sets || []).filter((s) => (s.kg ?? 0) >= target.kg - 1e-9 && (s.reps ?? 0) >= target.reps).length;
+    const good = (h.ex.sets || []).filter((s) => (mode !== 'kg' || (s.kg ?? 0) >= target.kg - 1e-9) && setValue(s, mode) >= target.reps).length;
     return good >= target.sets;
   });
 }
@@ -296,12 +313,26 @@ function toLocalDay(iso) {
 }
 
 // Spielt den Plan Woche für Woche durch.
-// Geschafft (alle Sätze mit mind. dem Zielgewicht erreichen die Ziel-Wiederholungen) → Stufe hält bzw. steigt.
+// Geschafft (alle Sätze mit mind. dem Zielgewicht erreichen die Ziel-Wiederholungen bzw. -Sekunden) → Stufe hält bzw. steigt.
 // Nicht geschafft → Stufe wird wiederholt. Woche ohne diese Übung → zählt nicht.
-export function progress(plan, history, T) {
+// Mit Gewicht: nach dem Maximum mehr Gewicht und zurück auf Start. Ohne Gewicht: am Maximum bleibt es stehen.
+export function progress(plan, history, T, mode = planMode(history)) {
   const p = {
     sets: Number(plan.sets), start: Number(plan.start_reps), kg: Number(plan.kg), plus: Number(plan.plus_reps),
-    every: Math.max(1, Number(plan.every_weeks)), max: Number(plan.max_reps), kgStep: Number(plan.kg_step)
+    every: Math.max(1, Number(plan.every_weeks)), max: Number(plan.max_reps), kgStep: Number(plan.kg_step), mode
+  };
+  const step = (st) => {
+    const o = { ...st, streak: st.streak + 1 };
+    if (o.streak >= p.every) {
+      o.streak = 0;
+      if (mode === 'kg') {
+        o.reps += p.plus;
+        if (o.reps > p.max) { o.reps = p.start; o.kg = round1(o.kg + p.kgStep); }
+      } else if (o.reps < p.max) {
+        o.reps = Math.min(p.max, o.reps + p.plus);
+      }
+    }
+    return o;
   };
   const byWeek = new Map();
   for (const h of history) {
@@ -309,53 +340,47 @@ export function progress(plan, history, T) {
     if (!byWeek.has(wk)) byWeek.set(wk, []);
     byWeek.get(wk).push(h);
   }
-  let reps = p.start;
-  let kg = p.kg;
-  let streak = 0;
+  let st = { reps: p.start, kg: mode === 'kg' ? p.kg : 0, streak: 0 };
   const weeks = new Map();
   const nowWeek = weekStart(T);
   const first = planStart(plan);
   for (let wk = first; wk <= nowWeek; wk = addDays(wk, 7)) {
-    const target = { reps, kg, sets: p.sets, consolidating: streak > 0 };
+    const target = { reps: st.reps, kg: st.kg, sets: p.sets, consolidating: st.streak > 0 };
     const entries = byWeek.get(wk) || [];
-    const result = entries.length ? (weekOk(entries, target) ? 'done' : 'missed') : 'none';
+    const result = entries.length ? (weekOk(entries, target, mode) ? 'done' : 'missed') : 'none';
     weeks.set(wk, { ...target, result });
     if (wk === nowWeek) break; // laufende Woche: Ziel bleibt bis Sonntag stehen
-    if (result === 'done') {
-      streak += 1;
-      if (streak >= p.every) {
-        streak = 0;
-        reps += p.plus;
-        if (reps > p.max) { reps = p.start; kg = round1(kg + p.kgStep); }
-      }
-    }
+    if (result === 'done') st = step(st);
   }
-  const current = weeks.get(nowWeek) || { reps, kg, sets: p.sets, consolidating: streak > 0, result: 'none' };
+  const current = weeks.get(nowWeek) || { reps: st.reps, kg: st.kg, sets: p.sets, consolidating: st.streak > 0, result: 'none' };
   // Wie geht es weiter, wenn diese Woche klappt?
-  let nr = current.reps;
-  let nk = current.kg;
-  let ns = streak + 1;
-  if (ns >= p.every) { ns = 0; nr += p.plus; if (nr > p.max) { nr = p.start; nk = round1(nk + p.kgStep); } }
+  const nx = step(st);
   return {
+    mode,
     weeks,
-    current: { ...current, done: current.result === 'done' },
-    next: { reps: nr, kg: nk, consolidating: ns > 0 },
-    ladder: ladder(p, current.reps, streak, current.kg),
-    weeksToNextKg: weeksLeft(p, current.reps, streak)
+    current: { ...current, done: current.result === 'done', atMax: mode !== 'kg' && current.reps >= p.max },
+    next: { reps: nx.reps, kg: nx.kg, consolidating: nx.streak > 0 },
+    ladder: ladder(p, current.reps, st.streak, current.kg),
+    weeksToNextKg: weeksLeft(p, current.reps, st.streak)
   };
 }
 
 function weeksLeft(p, reps, streak) {
+  if (p.mode && p.mode !== 'kg' && reps >= p.max) return 0;
   const levels = Math.floor((p.max - reps) / p.plus);
+  if (p.mode && p.mode !== 'kg') return Math.ceil((p.max - reps) / p.plus) * p.every - streak;
   return levels * p.every + (p.every - streak);
 }
 
-// Leiter für das aktuelle Gewicht: jede Stufe so oft, wie Wochen pro Stufe
+// Leiter: jede Stufe so oft, wie Wochen pro Stufe
 function ladder(p, reps, streak, kg) {
+  const unit = p.mode === 'sec' ? ' s' : '';
   const all = [];
   for (let r = p.start; r <= p.max; r += p.plus) for (let i = 0; i < p.every; i += 1) all.push(r);
-  const pos = Math.round(((reps - p.start) / p.plus) * p.every + streak);
-  let items = all.map((r, i) => ({ txt: String(r), state: i < pos ? 'done' : (i === pos ? 'now' : 'next') }));
+  if (p.mode && p.mode !== 'kg' && all[all.length - 1] !== p.max) for (let i = 0; i < p.every; i += 1) all.push(p.max);
+  let pos = Math.round(((reps - p.start) / p.plus) * p.every + streak);
+  if (p.mode && p.mode !== 'kg' && reps >= p.max) pos = all.indexOf(p.max) + Math.min(streak, p.every - 1);
+  let items = all.map((r, i) => ({ txt: String(r) + (i === all.length - 1 ? unit : ''), state: i < pos ? 'done' : (i === pos ? 'now' : 'next') }));
   if (items.length > 10) {
     const from = Math.max(0, pos - 2);
     const to = Math.min(items.length - 1, pos + 4);
@@ -364,16 +389,18 @@ function ladder(p, reps, streak, kg) {
       ...(to < items.length - 2 ? [{ txt: '…', state: 'next' }] : []),
       ...(to < items.length - 1 ? [items[items.length - 1]] : [])];
   }
-  const step = String(round1(p.kgStep)).replace('.', ',');
-  items.push({ txt: `+${step} kg`, state: 'next', kg: round1(kg + p.kgStep) });
+  if (!p.mode || p.mode === 'kg') {
+    const stepTxt = String(round1(p.kgStep)).replace('.', ',');
+    items.push({ txt: `+${stepTxt} kg`, state: 'next', kg: round1(kg + p.kgStep) });
+  }
   return items;
 }
 
 // Vorschau im Plan-Formular: die ganze Leiter ab Start
-export function planPreview(plan) {
+export function planPreview(plan, mode = 'kg') {
   const p = {
     start: Number(plan.start_reps), plus: Number(plan.plus_reps), every: Math.max(1, Number(plan.every_weeks)),
-    max: Number(plan.max_reps), kgStep: Number(plan.kg_step)
+    max: Number(plan.max_reps), kgStep: Number(plan.kg_step), mode
   };
   const items = ladder(p, p.start, 0, Number(plan.kg));
   const nextKg = round1(Number(plan.kg) + p.kgStep);
@@ -382,25 +409,32 @@ export function planPreview(plan) {
 
 // Vorschlag für einen neuen Plan aus dem Verlauf
 export function suggestPlan(history, T) {
-  const withKg = history.filter((h) => h.ex.kind === 'kg_reps' && (h.ex.sets || []).length);
-  const last = withKg[withKg.length - 1];
+  const usable = history.filter((h) => planModeOk(h.ex.kind) && (h.ex.sets || []).length);
+  const last = usable[usable.length - 1];
   if (!last) return null;
+  const mode = planMode([last]);
+  const equipment = last.ex.equipment || '';
+  const base = { exercise: last.ex.name, equipment, started_on: weekStart(T) }; // Plan beginnt in dieser Woche
+  if (mode === 'sec') {
+    const start = Math.max(5, Math.min(...last.ex.sets.map((s) => s.sec ?? 0)));
+    return { ...base, sets: last.ex.sets.length, start_reps: Math.min(200, start), kg: 0, plus_reps: 5, every_weeks: 1, max_reps: Math.min(300, Math.max(start + 30, Math.ceil((start * 2) / 30) * 30)), kg_step: 1 };
+  }
+  if (mode === 'reps') {
+    const start = Math.max(1, Math.min(...last.ex.sets.map((s) => s.reps ?? 0)));
+    return { ...base, sets: last.ex.sets.length, start_reps: start, kg: 0, plus_reps: 2, every_weeks: 2, max_reps: start < 40 ? 40 : start + 10, kg_step: 1 };
+  }
   const kg = Math.max(...last.ex.sets.map((s) => s.kg ?? 0));
   const atKg = last.ex.sets.filter((s) => (s.kg ?? 0) >= kg);
   const start = Math.max(1, Math.min(...atKg.map((s) => s.reps ?? 0)));
-  const equipment = last.ex.equipment || '';
   return {
-    exercise: last.ex.name,
-    equipment,
+    ...base,
     sets: atKg.length,
     start_reps: start,
     kg,
     plus_reps: 2,
     every_weeks: 2,
     max_reps: start < 40 ? 40 : start + 10,
-    kg_step: /Kurzhantel/.test(equipment) ? 2 : 2.5,
-    // Der Plan beginnt in dieser Woche – Einheiten dieser Woche zählen schon mit
-    started_on: weekStart(T)
+    kg_step: /Kurzhantel/.test(equipment) ? 2 : 2.5
   };
 }
 
@@ -410,6 +444,6 @@ export function sessionTarget(plan, history, entry, T) {
   const res = progress(plan, history, T);
   const wk = res.weeks.get(weekStart(entry.day));
   if (!wk) return null;
-  const ok = weekOk([entry], wk);
-  return { reps: wk.reps, kg: wk.kg, sets: wk.sets, ok };
+  const ok = weekOk([entry], wk, res.mode);
+  return { reps: wk.reps, kg: wk.kg, sets: wk.sets, ok, mode: res.mode };
 }

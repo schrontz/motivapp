@@ -7,7 +7,7 @@ import { todayItems, sortTodayItems, todayRing, windowQuota, totalHits, habitSta
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
 import { FIELDS, series, change, latest, lastChange } from './body.js';
-import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview } from './strength.js';
+import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview, planModeOk } from './strength.js';
 
 // Alpha Progression eingeschaltet (und Datenbank-Update 004 da)?
 export function alphaOn(S) {
@@ -531,7 +531,7 @@ export function sessionView(S, T, id) {
       const plan = (S.plans || []).find((p) => exerciseKey({ name: p.exercise, equipment: p.equipment }) === key);
       const tgt = entry ? sessionTarget(plan, hist, entry, T) : null;
       const pill = tgt
-        ? (tgt.ok ? `<span class="pill">Ziel ${tgt.reps} · erreicht</span>` : `<span class="pill pause">Ziel ${tgt.reps} · diesmal nicht</span>`)
+        ? (tgt.ok ? `<span class="pill">Ziel ${tgt.reps}${tgt.mode === 'sec' ? ' s' : ''} · erreicht</span>` : `<span class="pill pause">Ziel ${tgt.reps}${tgt.mode === 'sec' ? ' s' : ''} · diesmal nicht</span>`)
         : '';
       const rm = bestOneRm(e);
       let rmLine = '';
@@ -608,22 +608,31 @@ export function exerciseView(S, T, key) {
   if (plan) {
     const r = progress(plan, hist, T);
     const c = r.current;
+    const u = r.mode === 'sec' ? ' s' : '';
+    const max = Number(plan.max_reps);
     let sub;
-    if (c.done) sub = `Diese Woche geschafft. Nächste Woche: ${r.next.reps}${r.next.kg !== c.kg ? ` bei ${kgTxt(r.next.kg)} kg` : ''}${r.next.consolidating ? ' (festigen)' : ''}.`;
+    if (c.atMax && c.done) sub = `Diese Woche geschafft – und dein Maximum von ${max}${u} ist erreicht. Halten oder den Plan erweitern.`;
+    else if (c.done) sub = `Diese Woche geschafft. Nächste Woche: ${r.next.reps}${u}${r.mode === 'kg' && r.next.kg !== c.kg ? ` bei ${kgTxt(r.next.kg)} kg` : ''}${r.next.consolidating ? ' (festigen)' : ''}.`;
+    else if (c.atMax) sub = `Maximum erreicht – jetzt geht es ums Halten.`;
     else if (c.consolidating) sub = 'Festigungswoche: gleiche Zahl wie letzte Woche.';
-    else if (c.reps === Number(plan.start_reps) && c.kg > Number(plan.kg)) sub = 'Neues Gewicht – darum wieder ab Start.';
+    else if (r.mode === 'kg' && c.reps === Number(plan.start_reps) && c.kg > Number(plan.kg)) sub = 'Neues Gewicht – darum wieder ab Start.';
     else sub = r.weeks.size > 1 ? 'Neue Stufe.' : 'Erste Woche mit diesem Plan.';
+    const big = r.mode === 'kg' ? `${c.sets} × ${c.reps} bei ${kgTxt(c.kg)} kg` : `${c.sets} × ${c.reps}${u}`;
+    const foot = r.mode === 'kg'
+      ? `Noch etwa ${r.weeksToNextKg} ${r.weeksToNextKg === 1 ? 'Woche' : 'Wochen'} bis ${kgTxt(r.ladder[r.ladder.length - 1].kg)} kg.`
+      : (r.weeksToNextKg > 0 ? `Noch etwa ${r.weeksToNextKg} ${r.weeksToNextKg === 1 ? 'Woche' : 'Wochen'} bis ${max}${u}.` : '');
     planCard = `<section class="plan-card">
       <div class="small" style="font-weight: 600">Ziel diese Woche</div>
-      <div class="plan-big">${c.sets} × ${c.reps} bei ${kgTxt(c.kg)} kg</div>
+      <div class="plan-big">${big}</div>
       <div class="small">${sub}</div>
       ${ladderChips(r.ladder)}
-      <div class="small">Noch etwa ${r.weeksToNextKg} ${r.weeksToNextKg === 1 ? 'Woche' : 'Wochen'} bis ${kgTxt(r.ladder[r.ladder.length - 1].kg)} kg.</div>
+      ${foot ? `<div class="small">${foot}</div>` : ''}
     </section>`;
-  } else if (kind === 'kg_reps') {
+  } else if (planModeOk(kind)) {
+    const example = kind === 'time' ? 'jede Woche 5 Sekunden länger halten.' : (kind === 'reps' ? 'alle 2 Wochen 2 Wiederholungen mehr.' : 'alle 2 Wochen 2 Wiederholungen mehr – und bei 40 mehr Gewicht.');
     planCard = `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <b>Noch kein Steigerungsplan</b>
-      <p class="hint">Zum Beispiel: alle 2 Wochen 2 Wiederholungen mehr – und bei 40 mehr Gewicht.</p>
+      <p class="hint">Zum Beispiel: ${example}</p>
       <a class="btn ghost" href="#/plan/${encodeURIComponent(key)}">Steigerung einrichten</a>
     </section>`;
   }
@@ -685,13 +694,28 @@ const PLAN_FIELDS = [
   { key: 'max_reps', label: 'Bis', hint: 'dann mehr Gewicht', unit: ' Wdh.', step: 1, min: 1, max: 200 },
   { key: 'kg_step', label: 'Mehr Gewicht', hint: 'und zurück auf Start', unit: ' kg', step: 0.5, min: 0.5, max: 50, sign: '+' }
 ];
-export { PLAN_FIELDS };
+
+// Felder je nach Art: mit Gewicht, nur Wiederholungen, oder Zeit (Sekunden)
+export function planFields(mode = 'kg') {
+  if (mode === 'kg') return PLAN_FIELDS;
+  const noKg = PLAN_FIELDS.filter((f) => f.key !== 'kg' && f.key !== 'kg_step').map((f) => ({ ...f }));
+  const get = (k) => noKg.find((f) => f.key === k);
+  get('max_reps').hint = 'dann halten';
+  if (mode === 'sec') {
+    Object.assign(get('start_reps'), { hint: 'Sekunden pro Satz', unit: ' s', step: 5, min: 5, max: 200 });
+    Object.assign(get('plus_reps'), { hint: 'Sekunden', unit: ' s', step: 5, min: 5, max: 50 });
+    Object.assign(get('max_reps'), { unit: ' s', step: 5, min: 5, max: 300 });
+  }
+  return noKg;
+}
 
 export function planForm(S, T, key) {
   const d = S.planDraft;
   if (!d || d.key !== key) return loading();
   const p = d.plan;
-  const rows = PLAN_FIELDS.map((f) => `<div class="step-row">
+  const mode = d.mode || 'kg';
+  const u = mode === 'sec' ? ' s' : '';
+  const rows = planFields(mode).map((f) => `<div class="step-row">
       <div style="min-width: 0"><div style="font-size: 15px; font-weight: 600">${f.label}</div><div class="small muted">${f.hint}</div></div>
       <div class="mini-stepper">
         <button type="button" data-action="plan-step" data-id="${f.key}" data-delta="-1" aria-label="${f.label} weniger">−</button>
@@ -699,9 +723,20 @@ export function planForm(S, T, key) {
         <button type="button" data-action="plan-step" data-id="${f.key}" data-delta="1" aria-label="${f.label} mehr">+</button>
       </div>
     </div>`).join('');
-  const pv = planPreview(p);
+  const pv = planPreview(p, mode);
   const every = Number(p.every_weeks) === 1 ? 'jede Woche' : `alle ${p.every_weeks} Wochen`;
-  const items = [...pv.items.slice(0, -1), { txt: `${kgTxt(pv.nextKg)} kg × ${p.start_reps}`, state: 'final' }];
+  const items = mode === 'kg'
+    ? [...pv.items.slice(0, -1), { txt: `${kgTxt(pv.nextKg)} kg × ${p.start_reps}`, state: 'final' }]
+    : pv.items.map((it, i) => (i === pv.items.length - 1 ? { ...it, state: 'final' } : it));
+  const sentence = mode === 'kg'
+    ? `${p.sets} × ${p.start_reps} bei ${kgTxt(p.kg)} kg, ${every} +${p.plus_reps}. Bei ${p.max_reps} geht es mit ${kgTxt(pv.nextKg)} kg wieder ab ${p.start_reps} los.`
+    : `${p.sets} × ${p.start_reps}${u}, ${every} +${p.plus_reps}${u}. Bei ${p.max_reps}${u} bleibt es stehen – dann heißt es halten.`;
+  const weeksTxt = mode === 'kg'
+    ? `Etwa ${pv.weeks} Wochen bis ${kgTxt(pv.nextKg)} kg – wenn alles klappt. Wenn nicht, dauert es eben länger.`
+    : `Etwa ${pv.weeks} ${pv.weeks === 1 ? 'Woche' : 'Wochen'} bis ${p.max_reps}${u} – wenn alles klappt. Wenn nicht, dauert es eben länger.`;
+  const doneTxt = mode === 'kg'
+    ? `alle ${p.sets} Sätze mit mindestens ${kgTxt(p.kg)} kg erreichen das Ziel. Mehr Wiederholungen zählen mit.`
+    : (mode === 'sec' ? `alle ${p.sets} Sätze halten mindestens die Ziel-Sekunden. Länger zählt mit.` : `alle ${p.sets} Sätze erreichen die Ziel-Wiederholungen. Mehr zählen mit.`);
   return `<div class="app">
     <div class="bar"><button type="button" class="link-btn" data-action="plan-cancel" data-id="${esc(key)}">${svg(UI_ICONS.back, 20, 2.2)}${esc(p.exercise)}</button><span></span></div>
     <div class="wrap" style="gap: 12px">
@@ -709,12 +744,12 @@ export function planForm(S, T, key) {
       <section class="card" style="padding: 4px 16px">${rows}</section>
       <section class="plan-card">
         <div class="small" style="font-weight: 600">So sieht das aus</div>
-        <div style="font-size: 16px; font-weight: 600; line-height: 1.35">${p.sets} × ${p.start_reps} bei ${kgTxt(p.kg)} kg, ${every} +${p.plus_reps}. Bei ${p.max_reps} geht es mit ${kgTxt(pv.nextKg)} kg wieder ab ${p.start_reps} los.</div>
+        <div style="font-size: 16px; font-weight: 600; line-height: 1.35">${sentence}</div>
         ${ladderChips(items)}
-        <div class="small">Etwa ${pv.weeks} Wochen bis ${kgTxt(pv.nextKg)} kg – wenn alles klappt. Wenn nicht, dauert es eben länger.</div>
+        <div class="small">${weeksTxt}</div>
       </section>
       <section class="card pad" style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.45">
-        <div><b>Geschafft</b> heißt: alle ${p.sets} Sätze mit mindestens ${kgTxt(p.kg)} kg erreichen das Ziel. Mehr Wiederholungen zählen mit.</div>
+        <div><b>Geschafft</b> heißt: ${doneTxt}</div>
         <div class="muted"><b style="color: var(--text)">Nicht geschafft?</b> Dann bleibt die Stufe einfach eine Woche länger. Kein Rückschritt, kein Minus.</div>
         <div class="muted"><b style="color: var(--text)">Woche ohne diese Übung</b> (Pause, krank) zählt gar nicht.</div>
       </section>

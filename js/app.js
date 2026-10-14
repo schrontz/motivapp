@@ -6,7 +6,7 @@ import { today, addDays, diffDays, weekStart } from './dates.js';
 import { indexLogs, logOf, lastActivityDay } from './stats.js';
 import { autoLogChanges, CATEGORY_GROUPS } from './auto.js';
 import { parseRenphoCsv, bodyPreview, looksLikeRenpho } from './body.js';
-import { parseAlphaCsv, importPreview, exerciseHistory, exerciseKey, splitKey, suggestPlan, mergeTrainings } from './strength.js';
+import { parseAlphaCsv, importPreview, exerciseHistory, exerciseKey, splitKey, suggestPlan, mergeTrainings, planMode } from './strength.js';
 import { WITHINGS_CLIENT_ID, WITHINGS_REDIRECT } from './config.js';
 
 const root = document.getElementById('app');
@@ -439,13 +439,13 @@ function ensurePlanDraft(key, T) {
     exercise: name, equipment, sets: 3, start_reps: 10, kg: 0, plus_reps: 2, every_weeks: 2, max_reps: 20, kg_step: 2.5, started_on: weekStart(T)
   });
   ['sets', 'start_reps', 'kg', 'plus_reps', 'every_weeks', 'max_reps', 'kg_step'].forEach((k) => { base[k] = Number(base[k]); });
-  S.planDraft = { key, existing: existing || null, plan: base };
+  S.planDraft = { key, existing: existing || null, plan: base, mode: planMode(hist) };
 }
 
 function stepPlan(field, delta) {
   const d = S.planDraft;
   if (!d) return;
-  const f = V.PLAN_FIELDS.find((x) => x.key === field);
+  const f = V.planFields(d.mode).find((x) => x.key === field);
   if (!f) return;
   const p = d.plan;
   p[field] = Math.min(f.max, Math.max(f.min, Math.round((p[field] + delta * f.step) * 100) / 100));
@@ -458,6 +458,7 @@ async function savePlanDraft() {
   const d = S.planDraft;
   if (!d) return;
   const p = { ...d.plan };
+  if (d.mode && d.mode !== 'kg') { p.kg = 0; p.kg_step = 1; } // ohne Gewicht – Felder nur für die Datenbank füllen
   if (p.max_reps < p.start_reps) { const el = document.getElementById('form-error'); if (el) el.textContent = '„Bis“ muss mindestens so groß sein wie „Start“.'; return; }
   const ex = d.existing;
   // Neues Gewicht, neuer Start oder andere Satzzahl → Plan beginnt diese Woche neu
