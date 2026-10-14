@@ -281,6 +281,20 @@ function weekOk(entries, target) {
 
 function round1(n) { return Math.round(n * 100) / 100; }
 
+// Ab welcher Woche zählt der Plan? Nie vor der Woche, in der er angelegt wurde –
+// sonst bekämen alte Einheiten nachträglich „Ziel erreicht“.
+export function planStart(plan) {
+  const s = weekStart(plan.started_on);
+  if (!plan.created_at) return s;
+  const c = weekStart(toLocalDay(plan.created_at));
+  return c > s ? c : s;
+}
+
+function toLocalDay(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Spielt den Plan Woche für Woche durch.
 // Geschafft (alle Sätze mit mind. dem Zielgewicht erreichen die Ziel-Wiederholungen) → Stufe hält bzw. steigt.
 // Nicht geschafft → Stufe wird wiederholt. Woche ohne diese Übung → zählt nicht.
@@ -300,7 +314,7 @@ export function progress(plan, history, T) {
   let streak = 0;
   const weeks = new Map();
   const nowWeek = weekStart(T);
-  const first = weekStart(plan.started_on);
+  const first = planStart(plan);
   for (let wk = first; wk <= nowWeek; wk = addDays(wk, 7)) {
     const target = { reps, kg, sets: p.sets, consolidating: streak > 0 };
     const entries = byWeek.get(wk) || [];
@@ -374,13 +388,6 @@ export function suggestPlan(history, T) {
   const kg = Math.max(...last.ex.sets.map((s) => s.kg ?? 0));
   const atKg = last.ex.sets.filter((s) => (s.kg ?? 0) >= kg);
   const start = Math.max(1, Math.min(...atKg.map((s) => s.reps ?? 0)));
-  // Ab wann wird mit diesem Gewicht trainiert? Rückwärts suchen, solange das Gewicht gleich bleibt.
-  let firstDay = last.day;
-  for (let i = withKg.length - 1; i >= 0; i -= 1) {
-    const top = Math.max(...withKg[i].ex.sets.map((s) => s.kg ?? 0));
-    if (top < kg) break;
-    firstDay = withKg[i].day;
-  }
   const equipment = last.ex.equipment || '';
   return {
     exercise: last.ex.name,
@@ -392,8 +399,8 @@ export function suggestPlan(history, T) {
     every_weeks: 2,
     max_reps: start < 40 ? 40 : start + 10,
     kg_step: /Kurzhantel/.test(equipment) ? 2 : 2.5,
-    // höchstens 8 Wochen zurück – ältere Wochen folgten einem anderen Schema
-    started_on: weekStart(firstDay < addDays(last.day, -56) ? addDays(last.day, -56) : firstDay)
+    // Der Plan beginnt in dieser Woche – Einheiten dieser Woche zählen schon mit
+    started_on: weekStart(T)
   };
 }
 

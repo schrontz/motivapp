@@ -162,9 +162,9 @@ test('Leiter und Restwochen', () => {
 test('Planvorschlag aus dem Verlauf (wie Jans Curls)', () => {
   const sessions = [curls('2026-09-17', 4, 37), curls('2026-09-25', 4, 40), curls('2026-10-02', 7, 20), curls('2026-10-08', 7, 20)];
   const s = suggestPlan(exerciseHistory(sessions, 'Curls|Kurzhanteln'), '2026-10-12');
-  assert.deepEqual([s.sets, s.start_reps, s.kg, s.max_reps, s.started_on], [3, 20, 7, 40, '2026-09-28']);
+  assert.deepEqual([s.sets, s.start_reps, s.kg, s.max_reps, s.started_on], [3, 20, 7, 40, '2026-10-12'], 'Plan beginnt diese Woche');
   const r = progress(s, exerciseHistory(sessions, 'Curls|Kurzhanteln'), '2026-10-12');
-  assert.deepEqual([r.current.reps, r.current.kg], [22, 7], 'zwei Wochen 20 geschafft → jetzt 22');
+  assert.deepEqual([r.current.reps, r.current.kg, r.current.done], [20, 7, false], 'kein Sprung durch alte Wochen');
 });
 
 test('Ziel-Pille einer einzelnen Einheit', () => {
@@ -172,4 +172,15 @@ test('Ziel-Pille einer einzelnen Einheit', () => {
   const h = exerciseHistory(sessions, exerciseKey({ name: 'Curls', equipment: 'Kurzhanteln' }));
   assert.deepEqual(sessionTarget(plan, h, h[1], '2026-10-12'), { reps: 20, kg: 7, sets: 3, ok: true });
   assert.equal(sessionTarget(null, h, h[1], '2026-10-12'), null);
+});
+
+test('Plan zählt nie vor der Woche, in der er angelegt wurde', async () => {
+  const { planStart } = await import('../js/strength.js');
+  const sessions = [curls('2026-09-24', 7, 20), curls('2026-10-02', 7, 20), curls('2026-10-08', 7, 20)];
+  const h = exerciseHistory(sessions, 'Curls|Kurzhanteln');
+  const old = { ...plan, started_on: '2026-09-21', created_at: '2026-10-08T09:00:00Z' };
+  assert.equal(planStart(old), '2026-10-05');
+  assert.equal(sessionTarget(old, h, h[0], '2026-10-12'), null, 'Einheit vor dem Plan bekommt keine Pille');
+  assert.equal(sessionTarget(old, h, h[2], '2026-10-12').ok, true, 'Einheit in der Anlage-Woche zählt');
+  assert.deepEqual([progress(old, h, '2026-10-12').current.reps], [20], 'erst eine Woche geschafft → festigen');
 });
