@@ -217,3 +217,13 @@ test('Steigerung nur mit Wiederholungen (ohne Gewicht)', () => {
   const r = progress({ ...s, every_weeks: 1, started_on: '2026-10-05' }, h, '2026-10-14');
   assert.deepEqual([r.weeks.get('2026-10-05').result, r.current.reps, r.current.done], ['done', 14, false]);
 });
+
+test('Satz-Kacheln: kurz, auch bei Körpergewicht', async () => {
+  const { setCellText } = await import('../js/strength.js');
+  assert.equal(setCellText({ kind: 'kg_reps' }, { kg: 7, reps: 20 }), '20 · 7 kg');
+  assert.equal(setCellText({ kind: 'kg_reps' }, { kg: 0, plus: true, reps: 22 }), '22 Wdh.');
+  assert.equal(setCellText({ kind: 'kg_reps' }, { kg: 5, plus: true, reps: 20 }), '20 · +5 kg');
+  assert.equal(setCellText({ kind: 'reps' }, { reps: 12 }), '12 Wdh.');
+  assert.equal(setCellText({ kind: 'time' }, { sec: 60 }), '1 Min');
+  assert.equal(setCellText({ kind: 'time' }, { sec: 55 }), '55 s');
+});

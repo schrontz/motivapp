@@ -294,7 +294,7 @@ a.ex-card { display: block; padding: 14px 16px; text-decoration: none; color: in
 .ex-name { font-size: 16px; font-weight: 700; }
 .set-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
 .set-cell { background: var(--bg); border-radius: 10px; padding: 6px 8px; text-align: center; }
-.set-cell b { font-size: 14px; font-weight: 700; }
+.set-cell b { display: block; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-card { background: var(--k-blue); color: var(--text); border-radius: var(--radius-m); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .plan-card > .small { color: var(--c-blue); }
 .plan-big { font-size: 30px; font-weight: 700; line-height: 1.1; }

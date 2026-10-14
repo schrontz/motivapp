@@ -7,7 +7,7 @@ import { todayItems, sortTodayItems, todayRing, windowQuota, totalHits, habitSta
 import { tileValues, categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts, trainingList, trainingSummary, weeklyTrainingCounts, heartZones, stepsSummary } from './auto.js';
 import { APP_VERSION } from './config.js';
 import { FIELDS, series, change, latest, lastChange } from './body.js';
-import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview, planModeOk } from './strength.js';
+import { mergeTrainings, exerciseHistory, exerciseKey, splitKey, bestOneRm, volume, setsText, progress, sessionTarget, planPreview, planModeOk, setCellText } from './strength.js';
 
 // Alpha Progression eingeschaltet (und Datenbank-Update 004 da)?
 export function alphaOn(S) {
@@ -544,7 +544,7 @@ export function sessionView(S, T, id) {
         else if (prev != null && rm !== prev) delta = ` · ${rm > prev ? '+' : '−'}${kgTxt(Math.abs(Math.round((rm - prev) * 10) / 10))} zum letzten Mal`;
         rmLine = `<div class="small muted" style="margin-top: 8px">geschätzte Kraft (1RM): ${kgTxt(rm)} kg${delta}</div>`;
       }
-      const setCells = e.sets.map((x, i) => `<div class="set-cell"><div class="small muted">Satz ${i + 1}</div><b>${esc(setsText({ ...e, sets: [x] }).replace(/^1 × /, ''))}</b></div>`).join('');
+      const setCells = e.sets.map((x, i) => `<div class="set-cell"><div class="small muted">Satz ${i + 1}</div><b>${esc(setCellText(e, x))}</b></div>`).join('');
       return `<a class="card ex-card" href="#/exercise/${encodeURIComponent(key)}">
         <div class="ex-head"><div><div class="ex-name">${esc(e.name)}</div><div class="small muted">${esc(e.equipment || '')}</div></div>${pill}</div>
         <div class="set-grid">${setCells}</div>

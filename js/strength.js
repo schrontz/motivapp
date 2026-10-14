@@ -211,6 +211,19 @@ export function setsText(ex) {
   return `${sets.length} Sätze`;
 }
 
+// Kurztext für eine Satz-Kachel: "20 · 7 kg", "22 Wdh." (Körpergewicht), "20 · +5 kg", "55 s"
+export function setCellText(ex, set) {
+  const n = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
+  if (ex.kind === 'time') return set.sec >= 60 && set.sec % 60 === 0 ? `${set.sec / 60} Min` : `${set.sec ?? 0} s`;
+  if (ex.kind === 'distance') return set.km != null ? `${n(set.km)} km` : `${Math.round((set.sec || 0) / 60)} Min`;
+  if (ex.kind === 'reps') return `${set.reps ?? 0} Wdh.`;
+  if (ex.kind === 'kg_reps') {
+    if (set.plus) return set.kg ? `${set.reps ?? 0} · +${n(set.kg)} kg` : `${set.reps ?? 0} Wdh.`;
+    return `${set.reps ?? 0} · ${n(set.kg ?? 0)} kg`;
+  }
+  return '–';
+}
+
 // ───────────── Zusammenführen mit Withings ─────────────
 
 const MATCH_WINDOW = 20 * 60000;
