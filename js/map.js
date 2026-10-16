@@ -72,16 +72,29 @@ export async function mountDistanceMap() {
     bounds = bounds.extend([data.next.lat, data.next.lng]);
   }
   if (data.goal) {
-    // Reiseziel: geschaffter Teil durchgezogen, der Rest gestrichelt
+    // Reiseziel: geschaffter Teil durchgezogen, der Rest gestrichelt.
+    // Monatsansicht: Stück dieses Monats kräftig, davor blass.
     // Pole: Die Webkarte endet bei ~85° Breite – dort einzeichnen
     const g = [Math.max(-84, Math.min(84, data.goal.lat)), data.goal.lng];
+    const at = (f) => [center[0] + (g[0] - center[0]) * f, center[1] + (g[1] - center[1]) * f];
     const f = Math.max(0, Math.min(1, data.goal.share));
-    const mid = [center[0] + (g[0] - center[0]) * f, center[1] + (g[1] - center[1]) * f];
-    L.polyline([center, mid], { color: pink, weight: 4, opacity: 0.95 }).addTo(map);
+    const mid = at(f);
+    if (data.goal.shareFrom != null) {
+      const from = at(Math.max(0, Math.min(f, data.goal.shareFrom)));
+      L.polyline([center, from], { color: pink, weight: 3, opacity: 0.4 }).addTo(map);
+      L.polyline([from, mid], { color: pink, weight: 5, opacity: 1 }).addTo(map);
+    } else {
+      L.polyline([center, mid], { color: pink, weight: 4, opacity: 0.95 }).addTo(map);
+    }
     if (f < 1) L.polyline([mid, g], { color: ink, weight: 2, dashArray: '4 6' }).addTo(map);
+    for (const s of data.stages || []) {
+      L.circleMarker([s.lat, s.lng], { radius: 5, color: s.done ? '#fff' : ink, weight: 2, fillColor: s.done ? pink : '#fff', fillOpacity: 1 })
+        .bindTooltip(s.name, { direction: 'top', offset: [0, -4] }).addTo(map);
+    }
     L.circleMarker(g, { radius: 7, color: ink, weight: 2.5, fillColor: '#fff', fillOpacity: 1 })
       .bindTooltip(data.goal.name, { permanent: true, direction: 'top', offset: [0, -6], className: 'goal-tip' }).addTo(map);
-    bounds = bounds.extend(g);
+    if (data.goal.focusNext && data.nextStage) bounds = bounds.extend([data.nextStage.lat, data.nextStage.lng]);
+    else bounds = bounds.extend(g);
   }
   map.fitBounds(bounds, { padding: [28, 28], maxZoom: 10, animate: false });
 }

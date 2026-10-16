@@ -22,6 +22,13 @@ export const CITIES = [
   ['Warschau', 52.2297, 21.0122], ['Dublin', 53.3498, -6.2603], ['Oslo', 59.9139, 10.7522], ['Dubrovnik', 42.6507, 18.0944],
   ['Helsinki', 60.1699, 24.9384], ['Sevilla', 37.3891, -5.9845], ['Santiago de Compostela', 42.8782, -8.5448],
   ['Moskau', 55.7558, 37.6173], ['Reykjavík', 64.1466, -21.9426], ['Nordkap', 71.1685, 25.7838],
+  // Zwischenstationen – machen Etappen auf langen Wegen möglich
+  ['Basel', 47.5596, 7.5886], ['Bremen', 53.0793, 8.8017], ['Rotterdam', 51.9244, 4.4777], ['Salzburg', 47.8095, 13.055],
+  ['Innsbruck', 47.2692, 11.4041], ['Lyon', 45.764, 4.8357], ['Bordeaux', 44.8378, -0.5792], ['Genua', 44.4056, 8.9463],
+  ['Bologna', 44.4949, 11.3426], ['Florenz', 43.7696, 11.2558], ['Neapel', 40.8518, 14.2681], ['Palermo', 38.1157, 13.3615],
+  ['Valencia', 39.4699, -0.3763], ['Porto', 41.1579, -8.6291], ['Zagreb', 45.815, 15.9819], ['Belgrad', 44.7866, 20.4489],
+  ['Sofia', 42.6977, 23.3219], ['Bukarest', 44.4268, 26.1025], ['Krakau', 50.0647, 19.945], ['Danzig', 54.352, 18.6466],
+  ['Riga', 56.9496, 24.1052], ['Tallinn', 59.437, 24.7536], ['Göteborg', 57.7089, 11.9746], ['Glasgow', 55.8642, -4.2518],
   // Andere Kontinente – Luftlinie, also auch übers Wasser
   ['Tunis', 36.8065, 10.1815, 'Afrika'], ['Marrakesch', 31.6295, -7.9811, 'Afrika'], ['Kairo', 30.0444, 31.2357, 'Afrika'],
   ['Nairobi', -1.2921, 36.8219, 'Afrika'], ['Sansibar', -6.1659, 39.2026, 'Afrika'], ['Kapstadt', -33.9249, 18.4241, 'Afrika'],
@@ -209,3 +216,52 @@ export function nextSuggestions(startName, total, perDay) {
 
 // Startort: aus dem Profil (alle Geräte), sonst vom Gerät, sonst Frankfurt
 export const startOf = (S) => (S.profile && S.profile.travel_start) || S.distStart || STARTS[0];
+
+// ───────────── Etappen ─────────────
+
+// Zwischenstationen auf dem Weg zum Ziel: Orte nahe der Linie (höchstens 8 % Umweg), mit Abstand verteilt.
+// Fehlt in der Mitte eines langen Wegs eine Stadt, gibt es die „Halbzeit“. Das Ziel selbst ist die letzte Etappe.
+export function stagesFor(goal, places = []) {
+  const s = city(goal.start_city);
+  const g = placeOf(goal);
+  const D = km(s, g);
+  const gap = Math.max(D / 10, 15);
+  const cands = withPlaces(places)
+    .filter((c) => c.name !== s.name && c.name !== goal.city)
+    .map((c) => ({ name: c.name, lat: c.lat, lng: c.lng, dist: km(s, c), rest: km(c, g) }))
+    .filter((c) => c.dist < D && c.dist + c.rest <= D * 1.08)
+    .sort((a, b) => a.dist - b.dist);
+  const out = [];
+  let last = 0;
+  for (const c of cands) {
+    if (c.dist - last >= gap && D - c.dist >= gap / 2) { out.push(c); last = c.dist; }
+  }
+  if (D >= 300 && !out.some((c) => Math.abs(c.dist - D / 2) <= D * 0.1)) {
+    out.push({ name: 'Halbzeit', virtual: true, lat: s.lat + (g.lat - s.lat) / 2, lng: s.lng + (g.lng - s.lng) / 2, dist: D / 2 });
+    out.sort((a, b) => a.dist - b.dist);
+  }
+  return out.map((c) => ({ name: c.name, lat: c.lat, lng: c.lng, dist: Math.round(c.dist), virtual: !!c.virtual }))
+    .concat({ name: goal.city, lat: g.lat, lng: g.lng, dist: Math.round(D), final: true });
+}
+
+// Wo stehe ich auf dem Weg? Etappe, Stück bis zur nächsten, und was dieser Monat beigetragen hat.
+export function stageStatus(stages, total, monthKm = 0) {
+  const reached = stages.filter((st) => st.dist <= total).length;
+  const prev = reached ? stages[reached - 1] : null;
+  const from = prev ? prev.dist : 0;
+  const next = stages[reached] || null;
+  const leg = next ? next.dist - from : 1;
+  const clamp = (v) => Math.max(0, Math.min(1, v));
+  const monthFrom = Math.max(0, total - monthKm);
+  return {
+    reached,
+    count: stages.length,
+    prev,
+    next,
+    left: next ? Math.round((next.dist - total) * 10) / 10 : 0,
+    legShare: next ? clamp((total - from) / leg) : 1,
+    // Anteil der aktuellen Etappe, der schon vor diesem Monat geschafft war (für die zweifarbige Leiste)
+    legBeforeMonth: next ? clamp((monthFrom - from) / leg) : 1,
+    passedThisMonth: stages.filter((st) => st.dist > monthFrom && st.dist <= total)
+  };
+}

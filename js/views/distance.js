@@ -1,6 +1,6 @@
 // „Wie weit bin ich gekommen?“ – Strecke als Kreis auf der Karte, zusammengezählt. Dazu ein Reiseziel ohne Termin.
 
-import { STARTS, walked, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration } from '../distance.js';
+import { STARTS, walked, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus } from '../distance.js';
 import { monthName, monthStart } from '../dates.js';
 import { svg, UI_ICONS } from '../icons.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
@@ -22,6 +22,17 @@ function goalOption(c, p, label = '', on = false) {
   </button>`;
 }
 
+// Alle Etappen als Punktreihe – erreichte gefüllt, die nächste umrandet, Namen nur für letzte und nächste
+function stageStrip(stages, ss) {
+  const dots = stages.map((s, i) => {
+    const state = i < ss.reached ? 'done' : (i === ss.reached ? 'next' : 'ahead');
+    return `<span class="stage-dot" data-state="${state}"${s.final ? ' data-final="true"' : ''} title="${esc(s.name)} · ${kmTxt(s.dist)}"></span>`;
+  }).join('<span class="stage-line"></span>');
+  const names = stages.map((s) => esc(s.name)).join(' → ');
+  return `<div class="stage-strip" role="img" aria-label="Etappen: ${names}. ${ss.reached} geschafft.">${dots}</div>
+    <div class="small muted stage-names">${names}</div>`;
+}
+
 function goalCard(S, total, p) {
   if (!S.hasTravelSchema) {
     return '<p class="hint" style="padding: 0 4px">Für Reiseziele bitte das Datenbank-Update 006 im SQL-Editor ausführen.</p>';
@@ -29,15 +40,29 @@ function goalCard(S, total, p) {
   const goal = activeGoal(S.travel);
   if (goal) {
     const st = goalStatus(goal, total);
+    const stages = stagesFor(goal, S.places);
+    const ss = stageStatus(stages, total);
     const pct = Math.round(st.share * 100);
+    const legPct = Math.round(ss.legShare * 100);
+    const multi = stages.length > 1;
+    const party = S.stageCelebrate && S.stageCelebrate.goalId === goal.id ? S.stageCelebrate.name : null;
     return `<section class="card pad goal-card">
       <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px">
         <div><div class="small muted" style="font-weight: 600">Dein Reiseziel</div><div class="goal-name">${esc(goal.city)}</div></div>
         <button type="button" class="link-btn" data-action="travel-open">Ändern</button>
       </div>
-      <div class="goal-bar" role="img" aria-label="${pct} Prozent des Wegs nach ${esc(goal.city)}"><span style="width: ${pct}%"></span></div>
-      <div style="display: flex; justify-content: space-between; font-size: 14px"><span><b>${kmTxt(Math.min(total, st.dist))}</b> von ${kmTxt(st.dist)}</span><span class="muted">noch ${kmTxt(st.left)}</span></div>
-      ${p ? `<p class="small" style="line-height: 1.45">Bei deinem Schnitt ${duration(st.left / p.perDay, true)}. Kein Termin – nur eine Schätzung.</p>` : ''}
+      ${party ? `<div class="stage-party" role="status">
+        <span class="goal-flag">${svg(UI_ICONS.flag, 16, 2.4)}</span>
+        <span style="flex: 1"><b>Etappe geschafft: ${esc(party)}!</b><br><span class="small">Weiter nach ${esc(ss.next ? ss.next.name : goal.city)}.</span></span>
+        <button type="button" class="goal-del" data-action="travel-stage-ok" aria-label="Schließen">${svg('M6 6l12 12M18 6L6 18', 16)}</button>
+      </div>` : ''}
+      ${multi ? `<div class="small muted" style="font-weight: 600">${ss.next && ss.next.final ? 'Letzte Etappe' : `Etappe ${ss.reached + 1} von ${stages.length}`} · nach <b style="color: var(--text)">${esc(ss.next ? ss.next.name : goal.city)}</b></div>` : ''}
+      <div class="goal-bar" role="img" aria-label="${multi ? `${legPct} Prozent der Etappe nach ${esc(ss.next.name)}` : `${pct} Prozent des Wegs nach ${esc(goal.city)}`}"><span style="width: ${multi ? legPct : pct}%"></span></div>
+      <div style="display: flex; justify-content: space-between; font-size: 14px">${multi
+        ? `<span>noch <b>${kmTxt(ss.left)}</b> bis ${esc(ss.next.name)}</span>${p ? `<span class="muted">${duration(ss.left / p.perDay)}</span>` : ''}`
+        : `<span><b>${kmTxt(Math.min(total, st.dist))}</b> von ${kmTxt(st.dist)}</span><span class="muted">noch ${kmTxt(st.left)}</span>`}</div>
+      ${multi ? stageStrip(stages, ss) : ''}
+      <p class="small" style="line-height: 1.45">${multi ? `Ganze Reise: <b>${kmTxt(Math.min(total, st.dist))}</b> von ${kmTxt(st.dist)} (${pct} %)${p ? `, bei deinem Schnitt ${duration(st.left / p.perDay, true)}` : ''}.` : (p ? `Bei deinem Schnitt ${duration(st.left / p.perDay, true)}.` : '')} Kein Termin – nur eine Schätzung.</p>
     </section>`;
   }
   const done = S.celebrateId && S.travel.find((g) => g.id === S.celebrateId);
@@ -83,13 +108,20 @@ function goalCard(S, total, p) {
 function monthGoalCard(S, monthKm, total) {
   const goal = S.hasTravelSchema && activeGoal(S.travel);
   if (!goal || monthKm <= 0) return '';
-  const st = goalStatus(goal, total);
-  const pct = Math.round((monthKm / st.dist) * 100);
+  const stages = stagesFor(goal, S.places);
+  const ss = stageStatus(stages, total, monthKm);
+  const passed = ss.passedThisMonth.filter((x) => !x.final).map((x) => esc(x.name));
+  const before = Math.round(ss.legBeforeMonth * 100);
+  const now = Math.round(ss.legShare * 100);
+  const next = ss.next ? ss.next.name : goal.city;
   return `<section class="card pad goal-card">
-    <div class="small muted" style="font-weight: 600">Dein Reiseziel</div>
-    <div style="font-size: 17px">Diesen Monat <b>${kmTxt(monthKm)}</b> Richtung <b>${esc(goal.city)}</b>${pct >= 1 ? ` – ${pct >= 50 ? 'mehr als die Hälfte' : `${pct} %`} des ganzen Wegs` : ''}.</div>
-    <div class="goal-bar" role="img" aria-label="Dieser Monat: ${pct} Prozent des Wegs nach ${esc(goal.city)}"><span style="width: ${Math.min(100, pct)}%"></span></div>
-    <div class="small muted">Noch ${kmTxt(st.left)} bis ${esc(goal.city)}.</div>
+    <div class="small muted" style="font-weight: 600">Unterwegs nach ${esc(goal.city)}</div>
+    <div style="font-size: 17px">Diesen Monat <b>${kmTxt(monthKm)}</b>${passed.length ? ` – geschafft: <b>${passed.join(', ')}</b>` : ''}.</div>
+    <div class="goal-bar two" role="img" aria-label="Etappe nach ${esc(next)}: ${now} Prozent, davon ${now - before} Prozentpunkte diesen Monat">
+      <span class="before" style="width: ${before}%"></span><span style="width: ${Math.max(0, now - before)}%"></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 14px"><span>noch <b>${kmTxt(ss.left)}</b> bis ${esc(next)}</span><span class="small muted">kräftig = dieser Monat</span></div>
+    ${stages.length > 1 ? stageStrip(stages, ss) : ''}
   </section>`;
 }
 
@@ -194,7 +226,7 @@ export function distanceView(S, T) {
     ? `Von ${esc(short(startName))} bis <b>${esc(j.last.name)}</b>`
     : `Noch nicht ganz bis ${esc(j.next.name)}`;
   const nextLine = j.next
-    ? `Nächste Stadt: <b>${esc(j.next.name)}</b> – noch ${kmTxt(j.toNext)}`
+    ? `Rund um ${esc(short(startName))} – nächste Stadt: <b>${esc(j.next.name)}</b>, noch ${kmTxt(j.toNext)}`
     : 'Alle Ziele auf der Karte erreicht. Respekt.';
 
   // Karte: Daten für js/map.js
@@ -205,10 +237,21 @@ export function distanceView(S, T) {
     next: j.next ? { name: j.next.name, lat: j.next.lat, lng: j.next.lng } : null,
     goal: null
   };
-  const goal = !month && activeGoal(S.travel);
+  const goal = S.hasTravelSchema && activeGoal(S.travel);
   if (goal && goal.start_city === j.start.name) {
+    // Linie zum Ziel immer seit Start gerechnet; im Monat ist das Stück dieses Monats hervorgehoben
     const g = placeOf(goal);
-    mapData.goal = { name: goal.city, lat: g.lat, lng: g.lng, share: goalStatus(goal, span.km).share };
+    const D = goalStatus(goal, all.km).dist || 1;
+    const stages = stagesFor(goal, S.places);
+    mapData.goal = {
+      name: goal.city, lat: g.lat, lng: g.lng,
+      share: Math.min(1, all.km / D),
+      shareFrom: month ? Math.min(1, Math.max(0, all.km - span.km) / D) : null,
+      focusNext: month // im Monat auf das Monatsstück und die nächste Etappe zoomen, nicht aufs ganze Ziel
+    };
+    mapData.stages = stages.filter((s) => !s.final).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng, done: s.dist <= all.km }));
+    const nextStage = stages.find((s) => s.dist > all.km);
+    mapData.nextStage = nextStage ? { lat: nextStage.lat, lng: nextStage.lng } : null;
     mapData.next = null;
   }
 
@@ -264,7 +307,19 @@ function reachedList(S) {
 // Kleine Karte auf der Übersicht, bis die Ankunft einmal angesehen wurde
 export function travelArrivedCard(S) {
   const g = (S.travel || []).find((x) => x.reached_on && !x.seen);
-  if (!g) return '';
+  if (!g) {
+    // Neue Etappe geschafft?
+    const goal = S.hasStagesSchema && activeGoal(S.travel);
+    if (!goal || !goal.id) return '';
+    const stages = stagesFor(goal, S.places);
+    const ss = stageStatus(stages, walked(S.activity || []).km);
+    if (ss.reached <= (goal.stages_seen || 0) || !ss.prev) return '';
+    return `<a class="card pad dist-link travel-arrived" href="#/distance">
+      <span class="goal-flag big">${svg(UI_ICONS.flag, 20, 2.4)}</span>
+      <span style="flex: 1"><b>Etappe geschafft: ${esc(ss.prev.name)}!</b><br><span class="small muted">Weiter Richtung ${esc(goal.city)} – ansehen</span></span>
+      <span aria-hidden="true">›</span>
+    </a>`;
+  }
   return `<a class="card pad dist-link travel-arrived" href="#/distance">
     <span class="goal-flag big">${svg(UI_ICONS.flag, 20, 2.4)}</span>
     <span style="flex: 1"><b>Angekommen in ${esc(g.city)}!</b><br><span class="small muted">Dein Reiseziel – ansehen</span></span>

@@ -109,3 +109,30 @@ test('Meine Orte: Suche, OSM-Treffer, Ziel mit eigenen Koordinaten', async () =>
   assert.equal(placeOf({ city: 'Köln' }).lat, 50.9375);
   assert.ok(journey('Frankfurt am Main', 146, places).reached.some((c) => c.name === 'Bingen am Rhein'));
 });
+
+test('Etappen: Orte nahe der Linie, mit Abstand, Halbzeit, Ziel am Ende', async () => {
+  const { stagesFor, stageStatus } = await import('../js/distance.js');
+  const dus = stagesFor({ start_city: 'Frankfurt am Main', city: 'Düsseldorf' });
+  assert.deepEqual(dus.map((s) => s.name), ['Wiesbaden', 'Koblenz', 'Köln', 'Düsseldorf']);
+  assert.equal(dus.at(-1).final, true);
+  const cef = stagesFor({ start_city: 'Frankfurt am Main', city: 'Cefalù', lat: 38.0357, lng: 14.0222 });
+  const names = cef.map((s) => s.name);
+  assert.ok(names.includes('Mailand') && names.includes('Rom') && names.at(-1) === 'Cefalù', names.join(', '));
+  assert.ok(cef.length >= 5 && cef.length <= 11, names.join(', '));
+  for (let i = 1; i < cef.length; i += 1) assert.ok(cef[i].dist > cef[i - 1].dist, 'aufsteigend');
+  const tok = stagesFor({ start_city: 'Frankfurt am Main', city: 'Tokio' });
+  assert.ok(tok.some((s) => s.name === 'Peking'), tok.map((s) => s.name).join(', '));
+  assert.ok(tok.some((s) => s.virtual && s.name === 'Halbzeit'), 'Halbzeit in der leeren Mitte');
+  // Stand: 146 km Richtung Düsseldorf, davon 52 km diesen Monat
+  const st = stageStatus(dus, 146, 52);
+  assert.equal(st.reached, 2);
+  assert.equal(st.prev.name, 'Koblenz');
+  assert.equal(st.next.name, 'Köln');
+  assert.ok(st.legShare > 0.8 && st.legShare < 0.95);
+  assert.ok(Math.abs(st.legBeforeMonth - 12 / 71) < 0.001, 'Monat begann bei km 94, Etappe bei km 82');
+  assert.deepEqual(st.passedThisMonth, []);
+  const st2 = stageStatus(dus, 146, 80);
+  assert.equal(st2.legBeforeMonth, 0, 'Koblenz erst diesen Monat erreicht');
+  assert.deepEqual(st2.passedThisMonth.map((s) => s.name), ['Koblenz']);
+  assert.equal(stageStatus(dus, 0).next.name, 'Wiesbaden');
+});

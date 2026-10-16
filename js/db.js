@@ -59,7 +59,7 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true };
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true };
   const [profiles, categories, habits, logs, pauses, extra, strength, body, travel] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
@@ -83,11 +83,13 @@ export async function loadTravelData() {
     console.warn('Reiseziele nicht verfügbar (Datenbank-Update 006 schon ausgeführt?)', err);
     return { travel: [], places: [], hasTravelSchema: false, hasPlacesSchema: false };
   }
+  // Etappen (Update 008): Gibt es die Spalte schon?
+  const hasStagesSchema = await client.from('travel_goals').select('stages_seen').limit(1).then(check).then(() => true, () => false);
   try {
-    return { travel, places: await fetchAll('travel_places', 'name'), hasTravelSchema: true, hasPlacesSchema: true };
+    return { travel, places: await fetchAll('travel_places', 'name'), hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema };
   } catch (err) {
     console.warn('Eigene Orte nicht verfügbar (Datenbank-Update 007 schon ausgeführt?)', err);
-    return { travel, places: [], hasTravelSchema: true, hasPlacesSchema: false };
+    return { travel, places: [], hasTravelSchema: true, hasPlacesSchema: false, hasStagesSchema };
   }
 }
 

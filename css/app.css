@@ -380,3 +380,18 @@ label.btn { position: relative; }
 .goal-del { width: 44px; flex: none; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--muted); display: flex; align-items: center; justify-content: center; }
 .goal-opt[aria-disabled="true"] { opacity: 0.7; }
 .goal-opt .small { display: block; }
+.goal-bar.two { display: flex; }
+.goal-bar.two span { border-radius: 0; }
+.goal-bar.two span:first-child { border-radius: 6px 0 0 6px; }
+.goal-bar.two span:last-child { border-radius: 0 6px 6px 0; }
+.goal-bar .before { opacity: 0.4; }
+.stage-strip { display: flex; align-items: center; padding: 4px 2px 0; }
+.stage-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 2px solid var(--muted); background: var(--surface); box-sizing: border-box; }
+.stage-dot[data-state="done"] { background: var(--c-pink); border-color: var(--c-pink); }
+.stage-dot[data-state="next"] { border-color: var(--c-pink); border-width: 3px; }
+.stage-dot[data-final="true"] { width: 16px; height: 16px; border-color: var(--text); }
+.stage-dot[data-final="true"][data-state="next"] { border-color: var(--c-pink); }
+.stage-line { flex: 1; height: 2px; background: var(--border); min-width: 6px; }
+.stage-names { line-height: 1.4; }
+.stage-party { display: flex; align-items: center; gap: 10px; background: var(--k-pink); border-radius: 14px; padding: 10px 6px 10px 12px; }
+.stage-party .goal-del { width: 36px; height: 36px; border: 0; background: transparent; }

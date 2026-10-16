@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast } from '../core.js';
-import { walked, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace } from '../distance.js';
+import { walked, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus } from '../distance.js';
 
 const total = () => walked(S.activity || []).km;
 
@@ -26,6 +26,15 @@ export function markSeen() {
     S.celebrateId = g.id;
     persist(() => db.saveTravelGoal(g));
   }
+  // Neue Etappe? Einmal feiern (bleibt sichtbar, bis man sie wegklickt oder das Ziel wechselt)
+  const goal = S.hasStagesSchema && activeGoal(S.travel);
+  if (!goal || !goal.id) return;
+  const ss = stageStatus(stagesFor(goal, S.places), total());
+  if (ss.reached > (goal.stages_seen || 0) && ss.prev) {
+    goal.stages_seen = ss.reached;
+    S.stageCelebrate = { goalId: goal.id, name: ss.prev.name };
+    persist(() => db.saveTravelGoal(goal));
+  }
 }
 
 async function pick(name) {
@@ -39,6 +48,9 @@ async function pick(name) {
     goal.lat = own ? Number(own.lat) : null;
     goal.lng = own ? Number(own.lng) : null;
   }
+  // Etappen, die beim Wählen schon hinter dir liegen, werden nicht nachträglich gefeiert
+  if (S.hasStagesSchema) goal.stages_seen = stageStatus(stagesFor(goal, S.places), total()).reached;
+  S.stageCelebrate = null;
   resetSearch();
   if (!cur) S.travel.push(goal);
   S.travelSheet = false;
@@ -128,6 +140,7 @@ export const clicks = {
   'travel-close': () => { S.travelSheet = false; resetSearch(); render(); },
   'travel-pick': ({ id }) => pick(id),
   'travel-none': () => { S.celebrateId = null; render(); },
+  'travel-stage-ok': () => { S.stageCelebrate = null; render(); },
   'travel-clear': () => { S.travelSheet = false; return clearGoal(); }
 };
 
