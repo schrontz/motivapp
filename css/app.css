@@ -371,3 +371,12 @@ label.btn { position: relative; }
 .goal-regions { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -20px 8px; padding: 0 20px; }
 .goal-regions::-webkit-scrollbar { display: none; }
 .goal-regions .chip { min-height: 36px; padding: 0 14px; font-size: 13px; }
+.goal-search { display: flex; gap: 8px; }
+.goal-search .input { flex: 1; min-width: 0; }
+.goal-search .btn { width: auto; height: 50px; padding: 0 18px; font-size: 15px; flex: none; }
+.goal-list { display: flex; flex-direction: column; gap: 6px; }
+.goal-row { display: flex; gap: 6px; align-items: stretch; }
+.goal-row .goal-opt { flex: 1; min-width: 0; }
+.goal-del { width: 44px; flex: none; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--muted); display: flex; align-items: center; justify-content: center; }
+.goal-opt[aria-disabled="true"] { opacity: 0.7; }
+.goal-opt .small { display: block; }

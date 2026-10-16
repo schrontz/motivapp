@@ -1,6 +1,6 @@
 // „Wie weit bin ich gekommen?“ – Strecke als Kreis auf der Karte, zusammengezählt. Dazu ein Reiseziel ohne Termin.
 
-import { STARTS, walked, journey, pace, city, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration } from '../distance.js';
+import { STARTS, walked, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration } from '../distance.js';
 import { monthName, monthStart } from '../dates.js';
 import { svg, UI_ICONS } from '../icons.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
@@ -10,8 +10,14 @@ const short = (name) => name.replace(' am Main', '');
 
 // Ein Ziel als Auswahl-Knopf (Auswahl-Sheet und Vorschläge nach der Ankunft)
 function goalOption(c, p, label = '', on = false) {
+  if (c.inside) {
+    return `<div class="goal-opt" aria-disabled="true">
+      <span><span class="goal-opt-name">${esc(c.name)}</span>${c.label ? `<span class="small muted">${esc(c.label)}</span>` : ''}</span>
+      <span class="small muted" style="text-align: right">${kmTxt(c.dist)}<br>schon im Kreis</span>
+    </div>`;
+  }
   return `<button type="button" class="goal-opt" data-action="travel-pick" data-id="${esc(c.name)}"${on ? ' aria-pressed="true"' : ''}>
-    <span>${label ? `<span class="goal-opt-label">${label}</span>` : ''}<span class="goal-opt-name">${esc(c.name)}</span></span>
+    <span>${label ? `<span class="goal-opt-label">${label}</span>` : ''}<span class="goal-opt-name">${esc(c.name)}</span>${c.label ? `<span class="small muted">${esc(c.label)}</span>` : ''}</span>
     <span class="small muted" style="text-align: right">noch ${kmTxt(c.left)}${p ? `<br>${duration(c.left / p.perDay)}` : ''}</span>
   </button>`;
 }
@@ -87,10 +93,57 @@ function monthGoalCard(S, monthKm, total) {
   </section>`;
 }
 
+// Suchergebnisse: erst die eigene Liste, dann OpenStreetMap
+function searchResults(S, total, p) {
+  const r = S.travelResults;
+  const start = city(startOf(S));
+  const withDist = (c) => {
+    const dist = Math.round(km(start, c));
+    return { ...c, dist, left: Math.max(0, Math.round((dist - total) * 10) / 10), inside: dist <= total };
+  };
+  const goal = activeGoal(S.travel);
+  const local = r.local.map(withDist);
+  let osm = '';
+  if (S.travelSearching) osm = '<p class="small muted">Suche bei OpenStreetMap …</p>';
+  else if (r.error) osm = `<p class="small" style="color: var(--danger)">${esc(r.error)}</p>`;
+  else if (r.osm && !r.osm.length) osm = '<p class="small muted">Nichts gefunden. Vielleicht anders schreiben?</p>';
+  else if (r.osm) {
+    osm = r.osm.map((c, i) => {
+      const d = withDist(c);
+      return `<button type="button" class="goal-opt" data-action="travel-add" data-idx="${i}">
+        <span><span class="goal-opt-name">${esc(c.name)}</span>${c.label ? `<span class="small muted">${esc(c.label)}</span>` : ''}</span>
+        <span class="small muted" style="text-align: right">${d.inside ? `${kmTxt(d.dist)}<br>schon im Kreis` : `noch ${kmTxt(d.left)}${p ? `<br>${duration(d.left / p.perDay)}` : ''}`}</span>
+      </button>`;
+    }).join('');
+  }
+  return `${local.length ? `<div class="goal-group">Aus der Liste</div><div class="goal-list">${local.map((c) => goalOption(c, p, '', goal && goal.city === c.name)).join('')}</div>` : ''}
+    <div class="goal-group">OpenStreetMap</div>
+    ${S.hasPlacesSchema ? `<div class="goal-list">${osm}</div>
+    <p class="small muted" style="margin-top: 6px">Antippen speichert den Ort unter „Meine Orte“ und macht ihn zum Ziel. Suche: © OpenStreetMap-Mitwirkende.</p>`
+    : '<p class="small muted">Für eigene Orte bitte das Datenbank-Update 007 im SQL-Editor ausführen.</p>'}
+    <button type="button" class="link-btn" data-action="travel-search-clear">Zurück zur Auswahl</button>`;
+}
+
 function goalSheet(S, total, p) {
   const goal = activeGoal(S.travel);
-  const opts = (items) => `<div style="display: flex; flex-direction: column; gap: 6px">${items.map((c) => goalOption(c, p, '', goal && goal.city === c.name)).join('')}</div>`;
-  const groups = goalChoices(startOf(S), total, p && p.perWeek).map((g) => {
+  const opts = (items, removable = false) => `<div class="goal-list">${items.map((c) => removable
+    ? `<div class="goal-row">${goalOption(c, p, '', goal && goal.city === c.name)}<button type="button" class="goal-del" data-action="travel-place-delete" data-id="${esc(c.name)}" aria-label="${esc(c.name)} aus Meine Orte entfernen">${svg('M6 6l12 12M18 6L6 18', 18)}</button></div>`
+    : goalOption(c, p, '', goal && goal.city === c.name)).join('')}</div>`;
+  const search = `<form class="goal-search" data-form="travel-search" role="search">
+    <input class="input" type="search" name="q" value="${esc(S.travelQuery)}" placeholder="Ort suchen, z. B. Sylt" aria-label="Ort suchen" enterkeyhint="search" autocomplete="off">
+    <button type="submit" class="btn" ${S.travelSearching ? 'disabled' : ''}>Suchen</button>
+  </form>`;
+  if (S.travelResults) {
+    return `<button type="button" class="scrim" data-action="travel-close" aria-label="Schließen"></button>
+    <section class="sheet goal-sheet" role="dialog" aria-modal="true" aria-label="Reiseziel suchen">
+      <div class="handle"></div>
+      <h2 style="font-size: 22px">Reiseziel suchen</h2>
+      ${search}
+      <div>${searchResults(S, total, p)}</div>
+    </section>`;
+  }
+  const groups = goalChoices(startOf(S), total, p && p.perWeek, S.places).map((g) => {
+    if (g.key === 'mine') return `<div class="goal-group">${g.title}</div>${opts(g.items, true)}`;
     if (!g.regions) return `<div class="goal-group">${g.title}</div>${opts(g.items)}`;
     // Fernziele nach Kontinent: gewählter Kontinent, sonst der des aktuellen Ziels, sonst Europa
     const goalRegion = goal && (g.regions.find((r) => r.items.some((c) => c.name === goal.city)) || {}).name;
@@ -108,6 +161,7 @@ function goalSheet(S, total, p) {
       <h2 style="font-size: 22px">Reiseziel wählen</h2>
       <p class="small muted" style="margin-top: 2px">${p ? `Du läufst etwa ${kmTxt(p.perWeek)} in der Woche. Die Zeiten sind Schätzungen.` : 'Von ' + esc(short(startOf(S))) + ' aus, Luftlinie.'}</p>
     </div>
+    ${search}
     <div>${groups || '<p class="muted">Alle Ziele erreicht. Wahnsinn.</p>'}</div>
     ${goal ? '<button type="button" class="btn ghost" data-action="travel-clear">Ohne Ziel weiterlaufen</button>' : ''}
   </section>`;
@@ -118,7 +172,7 @@ export function distanceView(S, T) {
   const month = S.distRange === 'month';
   const all = walked(S.activity || []);
   const span = month ? walked(S.activity || [], monthStart(T), T) : all;
-  const j = journey(startName, span.km);
+  const j = journey(startName, span.km, S.places);
   const pc = pace(S.activity || [], T);
   const p = pc && pc.days >= 5 ? pc : null; // Schätzungen erst mit ein paar Tagen Daten
 
@@ -153,7 +207,7 @@ export function distanceView(S, T) {
   };
   const goal = !month && activeGoal(S.travel);
   if (goal && goal.start_city === j.start.name) {
-    const g = city(goal.city);
+    const g = placeOf(goal);
     mapData.goal = { name: goal.city, lat: g.lat, lng: g.lng, share: goalStatus(goal, span.km).share };
     mapData.next = null;
   }
@@ -191,7 +245,7 @@ export function distanceView(S, T) {
         <label class="small muted" for="dist-start">Startort</label>
         <select id="dist-start" class="input" data-action="dist-start">${startOpts}</select>
       </section>
-      <p class="hint" style="padding: 0 4px">Luftlinie – zu Fuß wäre der Weg etwas länger. Die Strecke kommt aus Withings und reicht so weit zurück wie deine Withings-Daten.</p>
+      <p class="hint" style="padding: 0 4px">Deine Kilometer sind echt gelaufen – aus deinen Schritten bei Withings. Nur der Weg zum Ziel ist Luftlinie.</p>
     </div>
     ${nav('overview')}
     ${S.travelSheet && !month ? goalSheet(S, span.km, p) : ''}

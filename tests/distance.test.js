@@ -77,7 +77,7 @@ test('Dauer freundlich gerundet', async () => {
 test('Zielvorschläge nach Schnitt gruppiert', async () => {
   const { goalChoices, nextSuggestions } = await import('../js/distance.js');
   const g = goalChoices('Frankfurt am Main', 146, 36);
-  assert.deepEqual(g.map((x) => x.key), ['week', 'mid', 'far']);
+  assert.deepEqual(g.map((x) => x.key), ['week', 'mid', 'far'], 'ohne eigene Orte keine Gruppe „Meine Orte“');
   assert.deepEqual(g[0].items.map((c) => c.name).sort(), ['Dortmund', 'Köln', 'Stuttgart']);
   assert.ok(g[1].items.length <= 4 && g[1].items.every((c) => c.left > 36 && c.left <= 216));
   assert.deepEqual(g[2].regions.map((r) => r.name), ['Europa', 'Afrika', 'Asien', 'Amerika', 'Ozeanien', 'Pole']);
@@ -89,4 +89,23 @@ test('Zielvorschläge nach Schnitt gruppiert', async () => {
   assert.ok(s.near && s.far);
   assert.ok(s.near.left > 40 && s.near.left < 110, s.near.name);
   assert.ok(s.far.left > 200, s.far.name);
+});
+
+test('Meine Orte: Suche, OSM-Treffer, Ziel mit eigenen Koordinaten', async () => {
+  const { searchLocal, osmToPlace, goalChoices, goalStatus, journey, placeOf } = await import('../js/distance.js');
+  const places = [{ name: 'Sylt', label: 'Schleswig-Holstein, Deutschland', lat: 54.9, lng: 8.31 }, { name: 'Bingen am Rhein', lat: 49.9669, lng: 7.8999 }];
+  assert.equal(searchLocal('dusseldorf')[0].name, 'Düsseldorf', 'Umlaute egal');
+  assert.equal(searchLocal('STRASSBURG')[0].name, 'Straßburg');
+  assert.equal(searchLocal('syl', places)[0].name, 'Sylt');
+  assert.deepEqual(searchLocal('  '), []);
+  const p = osmToPlace({ name: 'Sylt', lat: '54.9079123', lon: '8.3082456', address: { state: 'Schleswig-Holstein', country: 'Deutschland' } });
+  assert.deepEqual(p, { name: 'Sylt', label: 'Schleswig-Holstein, Deutschland', lat: 54.90791, lng: 8.30825 });
+  assert.equal(osmToPlace({ display_name: 'Bonn, Nordrhein-Westfalen, Deutschland', lat: '50.7', lon: '7.1' }).name, 'Bonn');
+  const g = goalChoices('Frankfurt am Main', 146, 36, places);
+  assert.equal(g[0].key, 'mine');
+  assert.deepEqual(g[0].items.map((c) => [c.name, c.inside]), [['Bingen am Rhein', true], ['Sylt', false]]);
+  const goal = { start_city: 'Frankfurt am Main', city: 'Sylt', lat: 54.9, lng: 8.31 };
+  assert.ok(Math.abs(goalStatus(goal, 0).dist - 535) < 15, 'Frankfurt–Sylt ≈ 530 km');
+  assert.equal(placeOf({ city: 'Köln' }).lat, 50.9375);
+  assert.ok(journey('Frankfurt am Main', 146, places).reached.some((c) => c.name === 'Bingen am Rhein'));
 });

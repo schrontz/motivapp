@@ -59,7 +59,7 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true };
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true };
   const [profiles, categories, habits, logs, pauses, extra, strength, body, travel] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
@@ -76,12 +76,40 @@ export async function loadAll() {
 
 // Reiseziele. Fehlt das Datenbank-Update 006 noch, läuft die App ohne weiter.
 export async function loadTravelData() {
+  let travel = [];
   try {
-    return { travel: await fetchAll('travel_goals', 'created_at'), hasTravelSchema: true };
+    travel = await fetchAll('travel_goals', 'created_at');
   } catch (err) {
     console.warn('Reiseziele nicht verfügbar (Datenbank-Update 006 schon ausgeführt?)', err);
-    return { travel: [], hasTravelSchema: false };
+    return { travel: [], places: [], hasTravelSchema: false, hasPlacesSchema: false };
   }
+  try {
+    return { travel, places: await fetchAll('travel_places', 'name'), hasTravelSchema: true, hasPlacesSchema: true };
+  } catch (err) {
+    console.warn('Eigene Orte nicht verfügbar (Datenbank-Update 007 schon ausgeführt?)', err);
+    return { travel, places: [], hasTravelSchema: true, hasPlacesSchema: false };
+  }
+}
+
+export async function savePlace(place) {
+  const { id, user_id, created_at, ...fields } = place;
+  if (isDemo) return { ...fields, id: id || demoId() };
+  return check(await client.from('travel_places').upsert(fields, { onConflict: 'user_id,name' }).select().single());
+}
+
+export async function deletePlace(id) {
+  if (isDemo || !id) return;
+  check(await client.from('travel_places').delete().eq('id', id));
+}
+
+// Orte suchen über OpenStreetMap (Nominatim). Nur auf Knopfdruck – die Nutzungsregeln erlauben max. 1 Anfrage/Sekunde.
+export async function searchPlaces(query) {
+  const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+    q: query, format: 'jsonv2', addressdetails: '1', limit: '6', 'accept-language': 'de'
+  });
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('Suche fehlgeschlagen (' + res.status + ')');
+  return res.json();
 }
 
 export async function saveTravelGoal(goal) {
@@ -387,7 +415,7 @@ const demo = (() => {
     body,
     profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
-    activity, workouts, dismissals: [], strength, plans, travel: [],
+    activity, workouts, dismissals: [], strength, plans, travel: [], places: [],
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
   };
 })();

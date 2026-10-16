@@ -30,6 +30,11 @@ export const S = {
   hasTravelSchema: false,
   travelSheet: false,
   travelRegion: null,
+  places: [],
+  hasPlacesSchema: false,
+  travelQuery: '',
+  travelResults: null,
+  travelSearching: false,
   celebrateId: null,
   bodyOpen: new Set(),
   syncing: false,
@@ -136,6 +141,7 @@ export async function persist(fn, errorText = 'Speichern hat nicht geklappt – 
     const msg = String((err && err.message) || '');
     let text = errorText;
     if (/schedule_min/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.';
+    else if (/travel_places|column .*lat/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 007 (Meine Orte) im SQL-Editor ausführen.';
     else if (/travel_/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 006 (Reiseziele) im SQL-Editor ausführen.';
     else if (/body_measurements/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 005 (Körperwerte) im SQL-Editor ausführen.';
     else if (/strength_sessions|exercise_plans/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 004 (Krafttraining) im SQL-Editor ausführen.';

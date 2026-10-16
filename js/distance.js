@@ -48,6 +48,39 @@ export function city(name) {
   return CITIES.find((c) => c.name === name) || CITIES[0];
 }
 
+// Eigene Orte („Meine Orte“) zu den festen Zielen dazu – gleichnamige feste Ziele haben Vorrang
+export function withPlaces(places = []) {
+  const known = new Set(CITIES.map((c) => c.name));
+  return CITIES.concat((places || []).filter((p) => !known.has(p.name))
+    .map((p) => ({ name: p.name, lat: Number(p.lat), lng: Number(p.lng), region: 'Meine Orte', label: p.label || '' })));
+}
+
+// Ort eines Ziels: eigene Orte bringen ihre Koordinaten mit, feste Ziele stehen in der Liste
+export function placeOf(goal) {
+  if (goal.lat != null && goal.lng != null) return { name: goal.city, lat: Number(goal.lat), lng: Number(goal.lng) };
+  return city(goal.city);
+}
+
+// Suche in festen Zielen und eigenen Orten – ohne Groß-/Kleinschreibung und Akzente
+const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss');
+export function searchLocal(query, places = []) {
+  const q = norm(query).trim();
+  if (!q) return [];
+  return withPlaces(places)
+    .filter((c) => norm(c.name).includes(q))
+    .sort((a, b) => (norm(a.name).startsWith(q) ? 0 : 1) - (norm(b.name).startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name, 'de'))
+    .slice(0, 6);
+}
+
+// Ein Treffer von OpenStreetMap (Nominatim) → eigener Ort
+export function osmToPlace(r) {
+  const a = r.address || {};
+  const name = r.name || String(r.display_name || '').split(',')[0].trim();
+  const region = a.state || a.county || '';
+  const label = [region !== name ? region : '', a.country].filter(Boolean).join(', ');
+  return { name, label, lat: Math.round(Number(r.lat) * 1e5) / 1e5, lng: Math.round(Number(r.lon) * 1e5) / 1e5 };
+}
+
 // Luftlinie in km (Haversine)
 export function km(a, b) {
   const R = 6371;
@@ -71,9 +104,9 @@ export function walked(activity, fromDay = '0000-00-00', toDay = '9999-12-31') {
 }
 
 // Welche Ziele liegen innerhalb der Strecke, welches kommt als Nächstes?
-export function journey(startName, total) {
+export function journey(startName, total, places = []) {
   const start = city(startName);
-  const list = CITIES.filter((c) => c.name !== start.name)
+  const list = withPlaces(places).filter((c) => c.name !== start.name)
     .map((c) => ({ ...c, dist: Math.round(km(start, c)) }))
     .sort((a, b) => a.dist - b.dist);
   const reached = list.filter((c) => c.dist <= total);
@@ -105,7 +138,7 @@ export const reachedGoals = (travel) => (travel || []).filter((g) => g.reached_o
 
 // Wie weit ist das Ziel, wie viel ist geschafft? (Strecke zählt seit Start – kann nur wachsen)
 export function goalStatus(goal, total) {
-  const dist = Math.round(km(city(goal.start_city), city(goal.city)));
+  const dist = Math.round(km(city(goal.start_city), placeOf(goal)));
   const left = Math.max(0, Math.round((dist - total) * 10) / 10);
   return { dist, left, share: dist > 0 ? Math.min(1, total / dist) : 1, reached: total >= dist };
 }
@@ -132,9 +165,13 @@ function spread(list, n) {
 }
 
 // Ziele zur Auswahl, nach deinem Schnitt gruppiert: diese Woche / in ein paar Wochen / fern
-export function goalChoices(startName, total, perWeek) {
+export function goalChoices(startName, total, perWeek, places = []) {
   const week = perWeek && perWeek > 0 ? perWeek : 35;
   const start = city(startName);
+  // Meine Orte: alle, auch die schon im Kreis (die sind dann nicht wählbar)
+  const mine = withPlaces(places).filter((c) => c.region === 'Meine Orte')
+    .map((c) => { const dist = Math.round(km(start, c)); return { name: c.name, label: c.label, region: c.region, dist, left: Math.max(0, Math.round((dist - total) * 10) / 10), inside: dist <= total }; })
+    .sort((a, b) => a.dist - b.dist);
   const ahead = CITIES.filter((c) => c.name !== start.name)
     .map((c) => ({ name: c.name, region: c.region, dist: Math.round(km(start, c)) }))
     .filter((c) => c.dist > total)
@@ -151,6 +188,7 @@ export function goalChoices(startName, total, perWeek) {
     return { name, items: name === 'Europa' ? spread(pool, 5) : pool.slice(0, 8) };
   }).filter((r) => r.items.length);
   return [
+    { key: 'mine', title: 'Meine Orte', items: mine },
     { key: 'week', title: 'Diese Woche drin', items: soon.slice(0, 3) },
     { key: 'mid', title: 'In ein paar Wochen', items: spread(mid, 4) },
     { key: 'far', title: 'Fernziele', items: regions.flatMap((r) => r.items), regions }
