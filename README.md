@@ -39,16 +39,19 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 | Datei | Inhalt |
 |---|---|
 | `index.html`, `css/app.css` | Gerüst und Gestaltung (hell/dunkel folgt dem Gerät) |
-| `js/app.js` | Zustand, Navigation, Aktionen |
-| `js/views.js` | Alle Bildschirme |
+| `js/app.js` | Routen, Ereignisse (Klick/Änderung/Formular → Aktion), Start |
+| `js/core.js` | Gemeinsamer Zustand, Navigation, Meldungen, Speichern mit Fehlerbehandlung |
+| `js/actions/` | Aktionen pro Bereich: `habits`, `withings`, `strength` (Steigerung), `imports` (Alpha + Renpho, eine Strecke), `body`, `profile` |
+| `js/views.js` + `js/views/` | Bildschirme pro Bereich: `ui` (gemeinsame Bausteine), `overview`, `habits`, `training`, `strength`, `body`, `imports`, `profile` |
 | `js/stats.js` | Quoten, Ringe, Statistik – reine Funktionen, getestet |
 | `js/auto.js` | Withings: Trainingsarten, Auto-Abhaken, Kacheln – getestet |
-| `js/body.js` | Renpho-CSV, Verlauf mit 2-Wochen-Schnitt – getestet |
 | `js/strength.js` | Alpha-CSV, Zusammenführen, Steigerung, 1RM – getestet |
-| `supabase/functions/withings/` | Server-Funktion für die Withings-API |
+| `js/body.js` | Renpho-CSV, Verlauf mit 2-Wochen-Schnitt – getestet |
 | `js/dates.js` | Datums-Hilfen |
 | `js/db.js` | Supabase-Zugriff + Demo-Daten (`?demo`) |
-| `supabase/` | SQL-Skripte |
+| `supabase/` | SQL-Skripte und Server-Funktion `withings` |
 | `tests/` | `npm test` (Node 20+) |
+
+Neue Aktion: im passenden `js/actions/…`-Modul unter `clicks`/`changes`/`submits` eintragen (Schlüssel = `data-action` bzw. `data-form`). Neue Datei? Auch in `sw.js` (`SHELL`) aufnehmen.
 
 Kein Build-Schritt: Dateien hochladen, fertig.
