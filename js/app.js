@@ -12,8 +12,10 @@ import * as strength from './actions/strength.js';
 import * as imports from './actions/imports.js';
 import * as body from './actions/body.js';
 import * as profile from './actions/profile.js';
+import * as distance from './actions/distance.js';
+import { mountDistanceMap } from './map.js';
 
-const MODULES = [habits, withings, strength, imports, body, profile];
+const MODULES = [habits, withings, strength, imports, body, profile, distance];
 const CLICKS = Object.assign({}, ...MODULES.map((m) => m.clicks || {}));
 const CHANGES = Object.assign({}, ...MODULES.map((m) => m.changes || {}));
 const SUBMITS = Object.assign({}, ...MODULES.map((m) => m.submits || {}));
@@ -30,6 +32,7 @@ setRenderer(() => {
     case 'habits': html = V.habitsList(S, T); break;
     case 'training': html = r.id ? V.sessionView(S, T, r.id) : V.trainingView(S, T); break;
     case 'steps': html = V.stepsView(S, T); break;
+    case 'distance': html = V.distanceView(S, T); break;
     case 'import': html = V.importView(S); break;
     case 'body': html = V.bodyView(S, T); break;
     case 'body-import': html = V.bodyImportView(S); break;
@@ -47,6 +50,7 @@ setRenderer(() => {
     default: html = V.overview(S, T);
   }
   root.innerHTML = html;
+  if (r.name === 'distance') mountDistanceMap();
   if (S.sheet) {
     const input = document.getElementById('sheet-val');
     if (input && S.sheet.focus) { input.focus(); input.select(); S.sheet.focus = false; }

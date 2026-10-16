@@ -16,7 +16,7 @@ export function tilesSection(S, T) {
     defs.steps = { label: 'Schritte', color: 'teal', value: v.steps.value != null ? fmt(v.steps.value) : '–', sub: v.steps.avg7 != null ? `Ø 7 T. ${fmt(v.steps.avg7)}` : 'heute', href: '#/steps' };
     defs.training = { label: 'Training', color: 'blue', value: `${v.training.count}×`, sub: `7 Tage${v.training.minutes ? ' · ' + hm(v.training.minutes).replace(' min', '′') : ''}`, href: '#/training' };
     defs.active = { label: 'Aktiv', color: 'orange', value: v.active.value != null ? `${v.active.value} min` : '–', sub: 'heute', href: '#/steps' };
-    defs.distance = { label: 'Strecke', color: 'pink', value: v.distance.value != null ? `${fmt(v.distance.value)} km` : '–', sub: 'heute', href: '#/steps' };
+    defs.distance = { label: 'Strecke', color: 'pink', value: v.distance.value != null ? `${fmt(v.distance.value)} km` : '–', sub: 'heute', href: '#/distance' };
   }
   if (bodyOn(S)) {
     const w = latest(S.body || [], 'weight', T);

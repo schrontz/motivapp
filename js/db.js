@@ -309,7 +309,8 @@ const demo = (() => {
   const workouts = [];
   for (let i = 30; i >= 0; i -= 1) {
     const d = addDays(t, -i);
-    activity.push({ day: d, steps: i === 0 ? 6240 : 3000 + Math.round(rnd() * 7000), distance_m: 4810, active_minutes: 20 + Math.round(rnd() * 40) });
+    const steps = i === 0 ? 6240 : 3000 + Math.round(rnd() * 7000);
+    activity.push({ day: d, steps, distance_m: Math.round(steps * 0.75), active_minutes: 20 + Math.round(rnd() * 40) });
     const wd = new Date(d + 'T12:00').getDay();
     if ([1, 3, 5].includes(wd) || i === 0) {
       const startAt = new Date(d + (i === 0 ? 'T07:30:00' : 'T18:05:00'));

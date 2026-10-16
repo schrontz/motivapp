@@ -221,6 +221,7 @@ export function stepsView(S, T) {
         ${goal ? `<div class="big">${s.daysOverGoal} von ${s.daysKnown} Tagen über ${fmt(goal)}</div>` : ''}
         <div class="small">Zusammen ${fmt(s.total)} Schritte${s.km ? ` – etwa ${fmt(s.km)} km` : ''}.</div>
       </section>` : ''}
+      <a class="card pad dist-link" href="#/distance"><span><b>Wie weit bin ich gekommen?</b><br><span class="small muted">Deine Strecke als Kreis auf der Karte</span></span><span aria-hidden="true">›</span></a>
       ${goal ? '' : '<p class="hint" style="padding: 0 4px">Tipp: Leg eine Gewohnheit „Schritte“ an und wähle „Wert von Withings übernehmen: Schritte“ – dann siehst du hier dein Ziel.</p>'}
     </div>
     ${nav('overview')}

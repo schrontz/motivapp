@@ -322,3 +322,24 @@ label.btn { position: relative; }
 .more-row:first-child { border-top: 0; }
 .more-btn { width: 100%; min-height: 50px; padding: 0 16px; border: 0; background: transparent; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 15px; text-align: left; }
 .more-btn b { font-weight: 600; }
+
+/* Wie weit bin ich gekommen? */
+.dist-head { display: flex; flex-direction: column; gap: 2px; }
+.dist-km { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; color: var(--c-pink); line-height: 1.1; }
+.dist-line { margin-top: 8px; font-size: 16px; }
+.dist-map { height: 300px; border-radius: var(--radius-m); overflow: hidden; background: var(--soft); position: relative; z-index: 0; }
+.dist-map-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+.dist-map .leaflet-control-attribution { font-size: 10px; }
+.dist-next { font-size: 15px; margin-bottom: 10px; }
+.dest-list { display: flex; flex-direction: column; }
+.dest-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); }
+.dest-row:first-child { border-top: 0; }
+.dest-name { flex: 1; font-weight: 600; }
+.dest-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c-pink); flex: none; }
+.dest-row[data-state="ahead"] .dest-dot { background: transparent; border: 2px dashed var(--muted); }
+.dest-row[data-state="ahead"] .dest-name { color: var(--muted); font-weight: 500; }
+.dist-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-decoration: none; color: inherit; }
+.dist-link > span:last-child { font-size: 24px; color: var(--muted); }
+@media (prefers-color-scheme: dark) {
+  .dist-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+}
