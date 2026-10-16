@@ -73,7 +73,8 @@ export async function mountDistanceMap() {
   }
   if (data.goal) {
     // Reiseziel: geschaffter Teil durchgezogen, der Rest gestrichelt
-    const g = [data.goal.lat, data.goal.lng];
+    // Pole: Die Webkarte endet bei ~85° Breite – dort einzeichnen
+    const g = [Math.max(-84, Math.min(84, data.goal.lat)), data.goal.lng];
     const f = Math.max(0, Math.min(1, data.goal.share));
     const mid = [center[0] + (g[0] - center[0]) * f, center[1] + (g[1] - center[1]) * f];
     L.polyline([center, mid], { color: pink, weight: 4, opacity: 0.95 }).addTo(map);

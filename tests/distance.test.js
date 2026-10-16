@@ -69,6 +69,9 @@ test('Dauer freundlich gerundet', async () => {
   assert.equal(duration(7.1, true), 'in etwa 7 Tagen');
   assert.equal(duration(20), 'etwa 3 Wochen');
   assert.equal(duration(65, true), 'in etwa 2 Monaten');
+  assert.equal(duration(1800), 'etwa 5 Jahre');
+  assert.equal(duration(400, true), 'in etwa 1 Jahr');
+  assert.equal(duration(560), 'etwa 1,5 Jahre');
 });
 
 test('Zielvorschläge nach Schnitt gruppiert', async () => {
@@ -77,7 +80,10 @@ test('Zielvorschläge nach Schnitt gruppiert', async () => {
   assert.deepEqual(g.map((x) => x.key), ['week', 'mid', 'far']);
   assert.deepEqual(g[0].items.map((c) => c.name).sort(), ['Dortmund', 'Köln', 'Stuttgart']);
   assert.ok(g[1].items.length <= 4 && g[1].items.every((c) => c.left > 36 && c.left <= 216));
-  assert.ok(g[2].items.some((c) => c.name === 'Istanbul' || c.name === 'Lissabon'), 'fernstes Ziel dabei');
+  assert.deepEqual(g[2].regions.map((r) => r.name), ['Europa', 'Afrika', 'Asien', 'Amerika', 'Ozeanien', 'Pole']);
+  assert.ok(g[2].regions[0].items.length <= 5);
+  assert.ok(g[2].regions.find((r) => r.name === 'Asien').items.some((c) => c.name === 'Tokio'));
+  assert.ok(g[2].regions.every((r) => r.items.every((c) => c.region === r.name)));
   assert.ok(g.flatMap((x) => x.items).every((c) => c.dist > 146), 'nur noch nicht erreichte');
   const s = nextSuggestions('Frankfurt am Main', 183, 5);
   assert.ok(s.near && s.far);

@@ -368,3 +368,6 @@ label.btn { position: relative; }
 .celebrate-city { font-size: 30px; font-weight: 700; line-height: 1.1; }
 .celebrate p { font-size: 15px; line-height: 1.45; margin-top: 4px; }
 .dist-map .goal-tip { font-family: inherit; font-weight: 700; font-size: 13px; border-radius: 8px; padding: 2px 8px; }
+.goal-regions { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -20px 8px; padding: 0 20px; }
+.goal-regions::-webkit-scrollbar { display: none; }
+.goal-regions .chip { min-height: 36px; padding: 0 14px; font-size: 13px; }

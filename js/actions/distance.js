@@ -50,7 +50,8 @@ async function clearGoal() {
 }
 
 export const clicks = {
-  'travel-open': () => { S.travelSheet = true; render(); },
+  'travel-open': () => { S.travelSheet = true; S.travelRegion = null; render(); },
+  'travel-region': ({ id }) => { S.travelRegion = id; render(); },
   'travel-close': () => { S.travelSheet = false; render(); },
   'travel-pick': ({ id }) => pick(id),
   'travel-none': () => { S.celebrateId = null; render(); },

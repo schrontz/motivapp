@@ -29,6 +29,7 @@ export const S = {
   travel: [],
   hasTravelSchema: false,
   travelSheet: false,
+  travelRegion: null,
   celebrateId: null,
   bodyOpen: new Set(),
   syncing: false,

@@ -89,9 +89,18 @@ function monthGoalCard(S, monthKm, total) {
 
 function goalSheet(S, total, p) {
   const goal = activeGoal(S.travel);
-  const groups = goalChoices(startOf(S), total, p && p.perWeek).map((g) => `
-    <div class="goal-group">${g.title}</div>
-    <div style="display: flex; flex-direction: column; gap: 6px">${g.items.map((c) => goalOption(c, p, '', goal && goal.city === c.name)).join('')}</div>`).join('');
+  const opts = (items) => `<div style="display: flex; flex-direction: column; gap: 6px">${items.map((c) => goalOption(c, p, '', goal && goal.city === c.name)).join('')}</div>`;
+  const groups = goalChoices(startOf(S), total, p && p.perWeek).map((g) => {
+    if (!g.regions) return `<div class="goal-group">${g.title}</div>${opts(g.items)}`;
+    // Fernziele nach Kontinent: gewählter Kontinent, sonst der des aktuellen Ziels, sonst Europa
+    const goalRegion = goal && (g.regions.find((r) => r.items.some((c) => c.name === goal.city)) || {}).name;
+    const region = g.regions.find((r) => r.name === S.travelRegion) || g.regions.find((r) => r.name === goalRegion) || g.regions[0];
+    const chips = g.regions.map((r) => `<button type="button" class="chip" data-action="travel-region" data-id="${esc(r.name)}" aria-pressed="${r === region}">${esc(r.name)}</button>`).join('');
+    return `<div class="goal-group">${g.title}</div>
+      <div class="goal-regions" role="group" aria-label="Kontinent">${chips}</div>
+      ${opts(region.items)}
+      ${region.name !== 'Europa' ? '<p class="small muted" style="margin-top: 6px">Luftlinie – übers Wasser zählt einfach mit.</p>' : ''}`;
+  }).join('');
   return `<button type="button" class="scrim" data-action="travel-close" aria-label="Schließen"></button>
   <section class="sheet goal-sheet" role="dialog" aria-modal="true" aria-label="Reiseziel wählen">
     <div class="handle"></div>
