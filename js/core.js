@@ -31,6 +31,7 @@ export const S = {
   idx: new Map(),
   cat: 'all',
   sheet: null,
+  pauseSheet: null,
   form: null,
   welcomePause: true,
   loaded: false,

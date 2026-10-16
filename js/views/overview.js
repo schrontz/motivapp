@@ -93,7 +93,7 @@ export function habitRow(S, item) {
     item.state === 'mini' ? '<span class="pill">Mini</span>' : '',
     p && p.state === 'mini' ? `<span class="pill">${miniPeriodName(h)}</span>` : '',
     p && p.state === 'goal' ? '<span class="pill goal">Ziel</span>' : '',
-    item.paused ? '<span class="pill pause">Pause</span>' : ''
+    (item.paused && !item.hit) ? '<span class="pill pause">Pause</span>' : ''
   ].join('');
   let progress = '';
   if (h.kind === 'count' && h.target) {
@@ -116,7 +116,7 @@ export function habitRow(S, item) {
     : (h.kind === 'count' ? svg(UI_ICONS.plus, 18, 2.5) : '');
   const action = h.kind === 'count' ? 'open-sheet' : 'toggle';
   const aria = h.kind === 'count' ? `${h.name}: Wert eintragen (${stateLabel})` : `${h.name}: ${stateLabel}. Tippen zum Ändern`;
-  return `<div class="row${item.paused ? ' paused' : ''}">
+  return `<div class="row${(item.paused && !item.hit) ? ' paused' : ''}">
     <div class="hicon" style="background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon)}</div>
     <a class="row-main" href="#/habit/${esc(h.id)}">
       <div class="row-title"><span>${esc(h.name)}</span>${pills}</div>
@@ -151,6 +151,7 @@ export function overview(S, T) {
     .filter((x) => x.hint && !(S.hintSeen && S.hintSeen(x.h.id, x.hint.count)))
     .map(({ h, hint }) => hintCard(h, hint)).join('');
 
+  const allPaused = S.pauses.some((p) => p.habit_id == null && p.start_day <= T && T <= p.end_day);
   let list;
   if (active.length === 0) {
     list = `<div class="empty"><b>Noch keine Gewohnheiten</b><p class="hint" style="margin: 6px 0 16px">Fang mit einer an – klein ist völlig okay.</p><a class="btn" href="#/new">Erste Gewohnheit anlegen</a></div>`;
@@ -169,6 +170,7 @@ export function overview(S, T) {
     <div class="wrap">
       ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30))}
       <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
+      ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
       ${list}
       ${hints}
       <section class="total">

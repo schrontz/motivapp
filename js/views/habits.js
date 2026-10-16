@@ -20,7 +20,7 @@ export function detail(S, T, id) {
   const maxBar = Math.max(1, ...st.months.map((m) => m.count));
   const stateWord = { done: 'geschafft', mini: 'Mini geschafft', paused: 'Pause', open: 'offen', free: 'nicht geplant', future: 'Zukunft', before: 'vor dem Start' };
   const cells = st.cells.map((c) => {
-    const disabled = c.state === 'future' || c.state === 'before';
+    const disabled = c.future || c.state === 'before';
     return `<button type="button" data-action="cal" data-id="${esc(h.id)}" data-day="${c.day}" data-state="${c.state}" data-today="${c.today}"${disabled ? ' disabled' : ''} aria-label="${c.n}. ${monthName(T)}: ${stateWord[c.state]}">${c.n}</button>`;
   }).join('');
   const blanks = '<span></span>'.repeat(st.offset);
@@ -54,6 +54,7 @@ export function detail(S, T, id) {
         </div>
         <p class="hint" style="margin-top: 10px">Vergessen einzutragen? Tipp auf einen vergangenen Tag.</p>
       </section>
+      ${pauseCard(S, T, h)}
       <section class="card pad">
         <div class="section-head" style="margin: 0 0 14px"><h2 style="font-size: 17px">Pro Monat</h2><span class="small muted">letzte 6 Monate</span></div>
         <div class="bars" role="img" aria-label="${esc(st.months.map((m) => `${monthShort(m.key)} ${m.count}`).join(', '))}">
@@ -64,6 +65,7 @@ export function detail(S, T, id) {
     </div>
     ${nav('habits')}
     ${S.sheet ? sheet(S, T) : ''}
+    ${S.pauseSheet ? pauseSheet(S, T) : ''}
   </div>`;
 }
 
@@ -142,9 +144,66 @@ export function habitsList(S, T) {
       }).join('')}</div>`).join('');
   return `<div class="app">
     <header class="top"><div><h1>Gewohnheiten</h1></div><a class="icon-btn" href="#/new" aria-label="Neue Gewohnheit anlegen">${svg(UI_ICONS.plus)}</a></header>
-    <div class="wrap" style="margin-top: 8px">${body}</div>
+    <div class="wrap" style="margin-top: 8px">${body}${active.length ? pauseCard(S, T, null) : ''}</div>
     ${nav('habits')}
+    ${S.pauseSheet ? pauseSheet(S, T) : ''}
   </div>`;
+}
+
+// ───────────── Pausen ─────────────
+
+const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+export function pauseRange(p) {
+  const a = parseDay(p.start_day);
+  const b = parseDay(p.end_day);
+  const day = (d, withMonth) => `${WD[d.getDay()]} ${d.getDate()}.${withMonth ? ' ' + monthShort(toKey(d)) : ''}`;
+  if (p.start_day === p.end_day) return day(a, true);
+  const sameMonth = p.start_day.slice(0, 7) === p.end_day.slice(0, 7);
+  return `${day(a, !sameMonth)} – ${day(b, true)}`;
+}
+
+function toKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Aktuelle und geplante Pausen + Knopf. habit = null → „für alle Gewohnheiten“
+export function pauseCard(S, T, habit) {
+  const mine = S.pauses.filter((p) => p.end_day >= T && (habit ? p.habit_id === habit.id : p.habit_id == null))
+    .sort((a, b) => (a.start_day < b.start_day ? -1 : 1));
+  const global = habit ? S.pauses.filter((p) => p.end_day >= T && p.habit_id == null) : [];
+  const rows = mine.map((p) => `<div class="cat-row" style="justify-content: space-between">
+      <div><div style="font-size: 15px; font-weight: 600">${pauseRange(p)}</div><div class="small muted">${p.start_day <= T ? 'läuft gerade' : 'geplant'}</div></div>
+      <button type="button" class="icon-btn" data-action="pause-delete" data-id="${esc(p.id)}" aria-label="Pause ${pauseRange(p)} entfernen" style="border: 0">${svg('M6 6l12 12M18 6L6 18', 18)}</button>
+    </div>`).join('');
+  const globalNote = global.length ? `<p class="hint">Dazu ${global.length === 1 ? 'eine Pause' : global.length + ' Pausen'} für alle Gewohnheiten: ${global.map(pauseRange).join(', ')}.</p>` : '';
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+    <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">${habit ? 'Pausen' : 'Pause für alles'}</h2><span class="small muted">${habit ? 'zählen nicht gegen dich' : 'Urlaub, krank, Wochenende'}</span></div>
+    ${rows ? `<div class="list" style="margin: 0 -16px">${rows}</div>` : ''}
+    ${globalNote}
+    <button type="button" class="btn ghost" data-action="pause-open" data-id="${habit ? esc(habit.id) : 'all'}">${habit ? 'Pause einlegen' : 'Alle Gewohnheiten pausieren'}</button>
+  </section>`;
+}
+
+export function pauseSheet(S, T) {
+  const ps = S.pauseSheet;
+  const h = ps.habitId ? S.habits.find((x) => x.id === ps.habitId) : null;
+  const title = h ? `Pause für ${esc(h.name)}` : 'Pause für alle Gewohnheiten';
+  const quick = [['today', 'Heute'], ['weekend', 'Wochenende'], ['week', 'Nächste 7 Tage']]
+    .map(([k, l]) => `<button type="button" class="chip" data-action="pause-quick" data-id="${k}">${l}</button>`).join('');
+  return `<button type="button" class="scrim" data-action="pause-close" aria-label="Schließen"></button>
+  <form class="sheet" data-form="pause" role="dialog" aria-modal="true" aria-label="${title}">
+    <div class="handle"></div>
+    <h2 style="font-size: 22px">${title}</h2>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">${quick}</div>
+    <div class="grid2">
+      <div class="field"><label for="ps-from">Von</label><input id="ps-from" class="input" type="date" name="from" value="${esc(ps.from)}" required></div>
+      <div class="field"><label for="ps-to">Bis</label><input id="ps-to" class="input" type="date" name="to" value="${esc(ps.to)}" required></div>
+    </div>
+    <p class="small" style="color: var(--danger); min-height: 18px" id="pause-error" role="alert"></p>
+    <button type="submit" class="btn">Pause eintragen</button>
+    <p class="small muted" style="text-align: center">Pausentage zählen nicht gegen dich – nicht in den Ringen, nicht in der Quote.${h ? '' : ' Gilt für alle Gewohnheiten.'}</p>
+  </form>`;
 }
 
 // ───────────── Anlegen / Bearbeiten ─────────────

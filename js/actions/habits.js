@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { S, local, session, route, go, render, toast, reindex, persist } from '../core.js';
-import { today, addDays } from '../dates.js';
+import { today, addDays, weekday } from '../dates.js';
 import { logOf, lastActivityDay } from '../stats.js';
 import { CATEGORY_GROUPS } from '../auto.js';
 import { applyAuto } from './withings.js';
@@ -55,6 +55,17 @@ function sheetValue() {
 export async function addPauseFor(habitId, start, end) {
   const row = await persist(() => db.addPause(habitId, start, end));
   if (row) { S.pauses.push(row); render(); }
+}
+
+// Schnellwahl im Pausen-Sheet
+function quickRange(key, T) {
+  if (key === 'week') return [T, addDays(T, 6)];
+  if (key === 'weekend') {
+    const wd = weekday(T); // 1 = Mo … 7 = So
+    const from = wd >= 6 ? T : addDays(T, 6 - wd);
+    return [from, addDays(from, 7 - weekday(from))];
+  }
+  return [T, T];
 }
 
 async function removePausesOn(habitId, day) {
@@ -243,6 +254,21 @@ export const clicks = {
     render();
     await persist(() => db.deleteCategory(id));
   },
+  'pause-open': ({ id, T }) => {
+    S.pauseSheet = { habitId: id === 'all' ? null : id, from: T, to: T };
+    render();
+  },
+  'pause-close': () => { S.pauseSheet = null; render(); },
+  'pause-quick': ({ id, T }) => {
+    const [from, to] = quickRange(id, T);
+    S.pauseSheet = { ...S.pauseSheet, from, to };
+    render();
+  },
+  'pause-delete': async ({ id }) => {
+    S.pauses = S.pauses.filter((p) => p.id !== id);
+    render();
+    await persist(() => db.deletePause(id));
+  },
   'hint-ok': ({ id, el }) => {
     local.set('hint.' + id, el.dataset.count);
     render();
@@ -288,6 +314,18 @@ export const changes = {
 
 export const submits = {
   habit: (form) => submitHabit(form),
+  pause: async (form) => {
+    const fd = new FormData(form);
+    const from = String(fd.get('from') || '');
+    const to = String(fd.get('to') || '');
+    const err = (msg) => { const el = document.getElementById('pause-error'); if (el) el.textContent = msg; };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return err('Bitte Von und Bis wählen.');
+    if (to < from) return err('„Bis“ liegt vor „Von“.');
+    const { habitId } = S.pauseSheet || {};
+    S.pauseSheet = null;
+    await addPauseFor(habitId ?? null, from, to);
+    toast(from === to ? 'Pause eingetragen – zählt nicht gegen dich.' : 'Pause eingetragen – diese Tage zählen nicht gegen dich.');
+  },
   'new-cat': async (form) => {
     const name = String(new FormData(form).get('name') || '').trim();
     if (!name) return;

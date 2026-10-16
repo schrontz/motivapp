@@ -151,8 +151,9 @@ export function todayItems(habits, idx, pauses, day) {
 // Innerhalb der Gruppen bleibt die eigene Reihenfolge erhalten.
 export function sortTodayItems(items) {
   const rank = (i) => {
+    if (i.hit) return 1; // an einem Pausentag trotzdem gemacht → zählt als erledigt
     if (i.paused) return 2;
-    if (i.hit || (i.period && i.period.state === 'goal')) return 1;
+    if (i.period && i.period.state === 'goal') return 1;
     return 0;
   };
   return items.map((i, n) => ({ i, n })).sort((a, b) => rank(a.i) - rank(b.i) || a.n - b.n).map((x) => x.i);
@@ -262,13 +263,13 @@ export function habitStats(h, idx, pauses, day) {
     const d = addDays(start, i);
     const log = m.get(d) || null;
     let state;
-    if (d > day) state = 'future';
+    if (d > day) state = isPaused(h, d, pauses) ? 'paused' : 'future'; // geplante Pause schon sichtbar
     else if (d < h.start_day) state = 'before';
     else if (isHit(log)) state = log.status === 'mini' ? 'mini' : 'done';
     else if (isPaused(h, d, pauses)) state = 'paused';
     else if (isPeriodic(h) || isDueOn(h, d)) state = 'open';
     else state = 'free';
-    cells.push({ day: d, n: i + 1, state, today: d === day });
+    cells.push({ day: d, n: i + 1, state, today: d === day, future: d > day });
   }
   const monthDays = Number(day.slice(8, 10));
   const monthQuota = windowQuota([h], idx, pauses, day, monthDays);

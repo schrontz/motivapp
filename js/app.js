@@ -56,6 +56,7 @@ setRenderer(() => {
 window.addEventListener('hashchange', (e) => {
   try { setLastHash(new URL(e.oldURL).hash); } catch { setLastHash(''); }
   S.sheet = null;
+  S.pauseSheet = null;
   S.form = null;
   const r = route();
   imports.resetImportsExcept(r.name);
@@ -110,7 +111,7 @@ root.addEventListener('keydown', (e) => {
     e.preventDefault();
     document.querySelector('[data-action="sheet-save"]').click();
   }
-  if (e.key === 'Escape' && S.sheet) { S.sheet = null; render(); }
+  if (e.key === 'Escape' && (S.sheet || S.pauseSheet)) { S.sheet = null; S.pauseSheet = null; render(); }
 });
 
 // ───────────── Start ─────────────
