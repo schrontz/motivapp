@@ -2,7 +2,7 @@
 // die Daten schützt Supabase per Login und Row Level Security.
 // NIEMALS hier den service_role-Key eintragen.
 // Bei jedem Update hochzählen – steht unten im Profil, damit man sieht, welcher Stand läuft
-export const APP_VERSION = '2026-10-16.4';
+export const APP_VERSION = '2026-10-16.5';
 
 export const SUPABASE_URL = 'https://msjvorshfezbcsomsvmj.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_lz1mNSlqqLuUvOhW77VGaw_j2xbbWyp';

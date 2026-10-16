@@ -73,6 +73,20 @@ function goalCard(S, total, p) {
   </section>`;
 }
 
+// Monatsansicht: was dieser Monat zum Reiseziel beigetragen hat – ein Beitrag, keine Latte
+function monthGoalCard(S, monthKm, total) {
+  const goal = S.hasTravelSchema && activeGoal(S.travel);
+  if (!goal || monthKm <= 0) return '';
+  const st = goalStatus(goal, total);
+  const pct = Math.round((monthKm / st.dist) * 100);
+  return `<section class="card pad goal-card">
+    <div class="small muted" style="font-weight: 600">Dein Reiseziel</div>
+    <div style="font-size: 17px">Diesen Monat <b>${kmTxt(monthKm)}</b> Richtung <b>${esc(goal.city)}</b>${pct >= 1 ? ` – ${pct >= 50 ? 'mehr als die Hälfte' : `${pct} %`} des ganzen Wegs` : ''}.</div>
+    <div class="goal-bar" role="img" aria-label="Dieser Monat: ${pct} Prozent des Wegs nach ${esc(goal.city)}"><span style="width: ${Math.min(100, pct)}%"></span></div>
+    <div class="small muted">Noch ${kmTxt(st.left)} bis ${esc(goal.city)}.</div>
+  </section>`;
+}
+
 function goalSheet(S, total, p) {
   const goal = activeGoal(S.travel);
   const groups = goalChoices(startOf(S), total, p && p.perWeek).map((g) => `
@@ -157,7 +171,7 @@ export function distanceView(S, T) {
         <div class="small muted">${month ? `im ${monthName(T)}` : `zu Fuß seit ${shortDate(all.first)}`}</div>
         <div class="dist-line">${headline}</div>
       </section>
-      ${month ? '' : goalCard(S, span.km, p)}
+      ${month ? monthGoalCard(S, span.km, all.km) : goalCard(S, span.km, p)}
       <div id="dist-map" class="dist-map" data-map='${esc(JSON.stringify(mapData))}' role="img" aria-label="Karte: Kreis mit ${kmTxt(span.km)} um ${esc(j.start.name)}"><div class="dist-map-msg small muted">Karte lädt …</div></div>
       <section class="card pad">
         <div class="dist-next">${nextLine}</div>
