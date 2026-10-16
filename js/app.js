@@ -13,7 +13,7 @@ import * as imports from './actions/imports.js';
 import * as body from './actions/body.js';
 import * as profile from './actions/profile.js';
 import * as distance from './actions/distance.js';
-import { mountDistanceMap } from './map.js';
+import { mountDistanceMap, unmountDistanceMap } from './map.js';
 
 const MODULES = [habits, withings, strength, imports, body, profile, distance];
 const CLICKS = Object.assign({}, ...MODULES.map((m) => m.clicks || {}));
@@ -27,6 +27,8 @@ setRenderer(() => {
   if (!S.loaded) { root.innerHTML = V.loading(); return; }
   const T = today();
   const r = route();
+  distance.checkArrival(T);
+  if (r.name === 'distance') distance.markSeen();
   let html;
   switch (r.name) {
     case 'habits': html = V.habitsList(S, T); break;
@@ -49,6 +51,7 @@ setRenderer(() => {
     }
     default: html = V.overview(S, T);
   }
+  unmountDistanceMap();
   root.innerHTML = html;
   if (r.name === 'distance') mountDistanceMap();
   if (S.sheet) {
@@ -61,6 +64,7 @@ window.addEventListener('hashchange', (e) => {
   try { setLastHash(new URL(e.oldURL).hash); } catch { setLastHash(''); }
   S.sheet = null;
   S.pauseSheet = null;
+  S.travelSheet = false;
   S.form = null;
   const r = route();
   imports.resetImportsExcept(r.name);
@@ -115,7 +119,7 @@ root.addEventListener('keydown', (e) => {
     e.preventDefault();
     document.querySelector('[data-action="sheet-save"]').click();
   }
-  if (e.key === 'Escape' && (S.sheet || S.pauseSheet)) { S.sheet = null; S.pauseSheet = null; render(); }
+  if (e.key === 'Escape' && (S.sheet || S.pauseSheet || S.travelSheet)) { S.sheet = null; S.pauseSheet = null; S.travelSheet = false; render(); }
 });
 
 // ───────────── Start ─────────────

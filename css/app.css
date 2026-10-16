@@ -343,3 +343,28 @@ label.btn { position: relative; }
 @media (prefers-color-scheme: dark) {
   .dist-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
 }
+
+/* Reiseziele */
+.goal-card { display: flex; flex-direction: column; gap: 10px; }
+.goal-name { font-size: 24px; font-weight: 700; }
+.goal-bar { height: 12px; border-radius: 6px; background: var(--k-pink); overflow: hidden; }
+.goal-bar span { display: block; height: 100%; background: var(--c-pink); border-radius: 6px; }
+.link-btn { min-height: 44px; padding: 0 4px; border: 0; background: transparent; font-size: 15px; font-weight: 500; color: var(--c-blue); }
+.link-btn.muted { color: var(--muted); }
+.goal-opt { min-height: 58px; padding: 8px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg); display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; width: 100%; }
+.goal-opt[aria-pressed="true"] { border: 2px solid var(--c-pink); background: var(--k-pink); }
+.goal-opt-name { display: block; font-size: 16px; font-weight: 600; }
+.goal-opt-label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.goal-group { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 14px 0 6px; }
+.goal-group:first-child { margin-top: 0; }
+.goal-sheet { max-height: 85vh; overflow-y: auto; gap: 12px; }
+.goal-flag { width: 28px; height: 28px; border-radius: 50%; background: var(--k-pink); color: var(--c-pink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.goal-flag.big { width: 40px; height: 40px; }
+.travel-arrived { justify-content: flex-start; }
+.celebrate { position: relative; overflow: hidden; background: var(--c-pink); color: var(--on-accent); border-radius: 24px; padding: 22px 20px 20px; display: flex; flex-direction: column; gap: 6px; }
+.celebrate > *:not(.confetti) { position: relative; }
+.celebrate .confetti { position: absolute; inset: 0; width: 100%; height: 100%; }
+.celebrate-ico { width: 56px; height: 56px; border-radius: 50%; background: var(--surface); color: var(--c-pink); display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+.celebrate-city { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.celebrate p { font-size: 15px; line-height: 1.45; margin-top: 4px; }
+.dist-map .goal-tip { font-family: inherit; font-weight: 700; font-size: 13px; border-radius: 8px; padding: 2px 8px; }

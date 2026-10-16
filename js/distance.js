@@ -20,6 +20,9 @@ export const CITIES = [
   ['Athen', 37.9838, 23.7275], ['Istanbul', 41.0082, 28.9784]
 ].map(([name, lat, lng]) => ({ name, lat, lng }));
 
+// Bekannte Fernziele – die schlägt die App bevorzugt vor
+const STARS = ['Berlin', 'Hamburg', 'München', 'Paris', 'London', 'Amsterdam', 'Prag', 'Wien', 'Kopenhagen', 'Rom', 'Venedig', 'Barcelona', 'Madrid', 'Lissabon', 'Stockholm', 'Athen', 'Istanbul'];
+
 // Startorte zur Auswahl
 export const STARTS = ['Frankfurt am Main', 'Berlin', 'Hamburg', 'München', 'Köln', 'Düsseldorf', 'Stuttgart', 'Leipzig', 'Hannover', 'Nürnberg', 'Wien', 'Zürich'];
 
@@ -75,3 +78,67 @@ export function pace(activity, T, days = 28) {
   const perDay = vals.reduce((s, v) => s + v, 0) / vals.length;
   return { perDay: Math.round(perDay * 10) / 10, perWeek: Math.round(perDay * 7), days: vals.length };
 }
+
+// ───────────── Reiseziele ─────────────
+
+export const activeGoal = (travel) => (travel || []).find((g) => !g.reached_on) || null;
+export const reachedGoals = (travel) => (travel || []).filter((g) => g.reached_on)
+  .sort((a, b) => (a.reached_on < b.reached_on ? 1 : a.reached_on > b.reached_on ? -1 : 0));
+
+// Wie weit ist das Ziel, wie viel ist geschafft? (Strecke zählt seit Start – kann nur wachsen)
+export function goalStatus(goal, total) {
+  const dist = Math.round(km(city(goal.start_city), city(goal.city)));
+  const left = Math.max(0, Math.round((dist - total) * 10) / 10);
+  return { dist, left, share: dist > 0 ? Math.min(1, total / dist) : 1, reached: total >= dist };
+}
+
+// Grobe Dauer, freundlich gerundet. inText: „in etwa 7 Tagen“ statt „etwa 7 Tage“.
+export function duration(days, inText = false) {
+  let n; let unit;
+  if (days <= 1.5) return inText ? 'in 1–2 Tagen' : '1–2 Tage';
+  if (days <= 13) { n = Math.round(days); unit = inText ? 'Tagen' : 'Tage'; }
+  else if (days <= 60) { n = Math.round(days / 7); unit = 'Wochen'; }
+  else { n = Math.round(days / 30); unit = inText ? 'Monaten' : 'Monate'; }
+  return `${inText ? 'in ' : ''}etwa ${n} ${unit}`;
+}
+
+// Gleichmäßig verteilt bis zu n Einträge aus einer sortierten Liste
+function spread(list, n) {
+  if (list.length <= n) return list;
+  return Array.from({ length: n }, (_, i) => list[Math.round((i * (list.length - 1)) / (n - 1))]);
+}
+
+// Ziele zur Auswahl, nach deinem Schnitt gruppiert: diese Woche / in ein paar Wochen / fern
+export function goalChoices(startName, total, perWeek) {
+  const week = perWeek && perWeek > 0 ? perWeek : 35;
+  const start = city(startName);
+  const ahead = CITIES.filter((c) => c.name !== start.name)
+    .map((c) => ({ name: c.name, dist: Math.round(km(start, c)) }))
+    .filter((c) => c.dist > total)
+    .map((c) => ({ ...c, left: Math.round((c.dist - total) * 10) / 10 }))
+    .sort((a, b) => a.left - b.left);
+  const soon = ahead.filter((c) => c.left <= week);
+  const mid = ahead.filter((c) => c.left > week && c.left <= week * 6);
+  const far = ahead.filter((c) => c.left > week * 6);
+  const farStars = far.filter((c) => STARS.includes(c.name));
+  return [
+    { key: 'week', title: 'Diese Woche drin', items: soon.slice(0, 3) },
+    { key: 'mid', title: 'In ein paar Wochen', items: spread(mid, 4) },
+    { key: 'far', title: 'Fernziele', items: spread(farStars.length >= 4 ? farStars : far, 4) }
+  ].filter((g) => g.items.length);
+}
+
+// Nach der Ankunft: ein Ziel in der Nähe (≈ 2 Wochen) und eins in der Ferne (≈ 2 Monate)
+export function nextSuggestions(startName, total, perDay) {
+  const day = perDay && perDay > 0 ? perDay : 5;
+  const ahead = goalChoices(startName, total, day * 7).flatMap((g) => g.items);
+  if (!ahead.length) return { near: null, far: null };
+  const closest = (want, from = ahead) => from.reduce((best, c) => (Math.abs(c.left - want) < Math.abs(best.left - want) ? c : best), from[0]);
+  const near = closest(day * 14);
+  const rest = ahead.filter((c) => c.left > near.left * 2);
+  const far = rest.length ? closest(day * 60, rest) : null;
+  return { near, far };
+}
+
+// Startort: aus dem Profil (alle Geräte), sonst vom Gerät, sonst Frankfurt
+export const startOf = (S) => (S.profile && S.profile.travel_start) || S.distStart || STARTS[0];

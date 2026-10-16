@@ -22,6 +22,7 @@ export const UI_ICONS = {
   minus: 'M5 12h14',
   back: 'M15 5l-7 7 7 7',
   trend: 'M3 17l6-6 4 4 8-8M15 7h6v6',
+  flag: 'M5 21V4M5 4h11l-2 4 2 4H5',
   home: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
   list: 'M9 6h11M9 12h11M9 18h11M4 6h1M4 12h1M4 18h1',
   user: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6'

@@ -46,3 +46,41 @@ test('Schnitt: nur abgeschlossene Tage mit Daten, Woche = 7 × Schnitt', () => {
   assert.equal(pace([], '2026-10-16'), null);
   assert.equal(pace([{ day: '2026-08-01', distance_m: 5000 }], '2026-10-16'), null, 'nur die letzten 28 Tage');
 });
+
+test('Reiseziel: Stand, Rest und erreicht', async () => {
+  const { goalStatus, activeGoal, reachedGoals } = await import('../js/distance.js');
+  const g = { start_city: 'Frankfurt am Main', city: 'Düsseldorf' };
+  const s = goalStatus(g, 146);
+  assert.equal(s.dist, 183);
+  assert.equal(s.left, 37);
+  assert.equal(s.reached, false);
+  assert.ok(s.share > 0.79 && s.share < 0.8);
+  assert.equal(goalStatus(g, 190).reached, true);
+  assert.equal(goalStatus(g, 190).left, 0);
+  const travel = [{ id: 1, reached_on: '2026-10-01' }, { id: 2, reached_on: null }, { id: 3, reached_on: '2026-10-10' }];
+  assert.equal(activeGoal(travel).id, 2);
+  assert.deepEqual(reachedGoals(travel).map((x) => x.id), [3, 1]);
+  assert.equal(activeGoal([]), null);
+});
+
+test('Dauer freundlich gerundet', async () => {
+  const { duration } = await import('../js/distance.js');
+  assert.equal(duration(1), '1–2 Tage');
+  assert.equal(duration(7.1, true), 'in etwa 7 Tagen');
+  assert.equal(duration(20), 'etwa 3 Wochen');
+  assert.equal(duration(65, true), 'in etwa 2 Monaten');
+});
+
+test('Zielvorschläge nach Schnitt gruppiert', async () => {
+  const { goalChoices, nextSuggestions } = await import('../js/distance.js');
+  const g = goalChoices('Frankfurt am Main', 146, 36);
+  assert.deepEqual(g.map((x) => x.key), ['week', 'mid', 'far']);
+  assert.deepEqual(g[0].items.map((c) => c.name).sort(), ['Dortmund', 'Köln', 'Stuttgart']);
+  assert.ok(g[1].items.length <= 4 && g[1].items.every((c) => c.left > 36 && c.left <= 216));
+  assert.ok(g[2].items.some((c) => c.name === 'Istanbul' || c.name === 'Lissabon'), 'fernstes Ziel dabei');
+  assert.ok(g.flatMap((x) => x.items).every((c) => c.dist > 146), 'nur noch nicht erreichte');
+  const s = nextSuggestions('Frankfurt am Main', 183, 5);
+  assert.ok(s.near && s.far);
+  assert.ok(s.near.left > 40 && s.near.left < 110, s.near.name);
+  assert.ok(s.far.left > 200, s.far.name);
+});

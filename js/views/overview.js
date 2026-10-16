@@ -5,6 +5,7 @@ import { series, latest } from '../body.js';
 import { longDate, greeting, monthName, diffDays, parseDay } from '../dates.js';
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS } from '../icons.js';
 import { todayItems, sortTodayItems, todayRing, windowQuota, totalHits, scheduleText, logOf, isPaused, miniPeriodName, patternHint } from '../stats.js';
+import { travelArrivedCard } from './distance.js';
 import { bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
 export function tilesSection(S, T) {
@@ -168,6 +169,7 @@ export function overview(S, T) {
     </header>
     ${chips}
     <div class="wrap">
+      ${travelArrivedCard(S)}
       ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30))}
       <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
       ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}

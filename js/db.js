@@ -59,8 +59,8 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true };
-  const [profiles, categories, habits, logs, pauses, extra, strength, body] = await Promise.all([
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true };
+  const [profiles, categories, habits, logs, pauses, extra, strength, body, travel] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
     fetchAll('habits', 'sort_order'),
@@ -68,9 +68,32 @@ export async function loadAll() {
     fetchAll('pauses', 'start_day'),
     loadWithingsData(),
     loadStrengthData(),
-    loadBodyData()
+    loadBodyData(),
+    loadTravelData()
   ]);
-  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body };
+  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body, ...travel };
+}
+
+// Reiseziele. Fehlt das Datenbank-Update 006 noch, läuft die App ohne weiter.
+export async function loadTravelData() {
+  try {
+    return { travel: await fetchAll('travel_goals', 'created_at'), hasTravelSchema: true };
+  } catch (err) {
+    console.warn('Reiseziele nicht verfügbar (Datenbank-Update 006 schon ausgeführt?)', err);
+    return { travel: [], hasTravelSchema: false };
+  }
+}
+
+export async function saveTravelGoal(goal) {
+  const { id, user_id, created_at, ...fields } = goal;
+  if (isDemo) return { ...fields, id: id || demoId() };
+  if (id) return check(await client.from('travel_goals').update(fields).eq('id', id).select().single());
+  return check(await client.from('travel_goals').insert(fields).select().single());
+}
+
+export async function deleteTravelGoal(id) {
+  if (isDemo || !id) return;
+  check(await client.from('travel_goals').delete().eq('id', id));
 }
 
 // Körperwerte (Renpho). Fehlt das Datenbank-Update 005 noch, läuft die App ohne weiter.
@@ -364,7 +387,7 @@ const demo = (() => {
     body,
     profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
-    activity, workouts, dismissals: [], strength, plans,
+    activity, workouts, dismissals: [], strength, plans, travel: [],
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
   };
 })();

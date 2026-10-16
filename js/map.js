@@ -24,8 +24,13 @@ function loadLeaflet() {
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-export async function mountDistanceMap() {
+// Vor jedem Neuzeichnen: alte Karte sauber abbauen (sonst feuern Leaflet-Ereignisse ins Leere)
+export function unmountDistanceMap() {
   if (current) { try { current.remove(); } catch { /* Element schon weg */ } current = null; }
+}
+
+export async function mountDistanceMap() {
+  unmountDistanceMap();
   const el = document.getElementById('dist-map');
   if (!el) return;
   let data;
@@ -44,7 +49,7 @@ export async function mountDistanceMap() {
   const ink = cssVar('--text') || '#1A1F1E';
   const center = [data.start.lat, data.start.lng];
   // Erst eine Ansicht setzen – der Kreis braucht sie, um seine Grenzen zu berechnen
-  const map = L.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false }).setView(center, 8);
+  const map = L.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false }).setView(center, 8);
   current = map;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -66,5 +71,16 @@ export async function mountDistanceMap() {
       .bindTooltip(`Nächstes Ziel: ${data.next.name}`).addTo(map);
     bounds = bounds.extend([data.next.lat, data.next.lng]);
   }
-  map.fitBounds(bounds, { padding: [24, 24], maxZoom: 10 });
+  if (data.goal) {
+    // Reiseziel: geschaffter Teil durchgezogen, der Rest gestrichelt
+    const g = [data.goal.lat, data.goal.lng];
+    const f = Math.max(0, Math.min(1, data.goal.share));
+    const mid = [center[0] + (g[0] - center[0]) * f, center[1] + (g[1] - center[1]) * f];
+    L.polyline([center, mid], { color: pink, weight: 4, opacity: 0.95 }).addTo(map);
+    if (f < 1) L.polyline([mid, g], { color: ink, weight: 2, dashArray: '4 6' }).addTo(map);
+    L.circleMarker(g, { radius: 7, color: ink, weight: 2.5, fillColor: '#fff', fillOpacity: 1 })
+      .bindTooltip(data.goal.name, { permanent: true, direction: 'top', offset: [0, -6], className: 'goal-tip' }).addTo(map);
+    bounds = bounds.extend(g);
+  }
+  map.fitBounds(bounds, { padding: [28, 28], maxZoom: 10, animate: false });
 }
