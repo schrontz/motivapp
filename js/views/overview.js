@@ -50,11 +50,12 @@ export function dash(r, f) {
   return `${len.toFixed(1)} ${c.toFixed(1)}`;
 }
 
-export function ringsCard(today, week, month) {
-  const fToday = today.due ? today.done / today.due : 0;
+// pause: heute ist nichts fällig, weil Pause ist → Ring „Heute“ voll („Nichts muss“ soll sich auch so anfühlen)
+export function ringsCard(today, week, month, pause = null) {
+  const fToday = pause ? 1 : (today.due ? today.done / today.due : 0);
   const fWeek = week.expected ? week.hits / week.expected : 0;
   const fMonth = month.expected ? month.hits / month.expected : 0;
-  const tText = today.due ? `${today.done} von ${today.due}` : '–';
+  const tText = pause ? (pause.done ? `Pause · ${pause.done} ✓` : 'Pause') : (today.due ? `${today.done} von ${today.due}` : '–');
   const wText = week.pct == null ? '–' : `${week.pct} %`;
   const mText = month.pct == null ? '–' : `${month.pct} %`;
   const label = `Heute ${tText}, letzte 7 Tage ${wText}, letzte 30 Tage ${mText}`;
@@ -68,6 +69,13 @@ export function ringsCard(today, week, month) {
     </svg>
     <div class="legend">${leg(1, 'Heute', tText)}${leg(2, 'Letzte 7 Tage', wText)}${leg(3, 'Letzte 30 Tage', mText)}</div>
   </section>`;
+}
+
+// Pausentag: alles pausiert oder nichts fällig, aber etwas pausiert. Zählt, was trotzdem gemacht wurde.
+function pauseToday(items, allPaused) {
+  const ring = todayRing(items);
+  const paused = allPaused || (ring.due === 0 && items.some((i) => i.paused));
+  return paused ? { done: items.filter((i) => i.hit).length } : null;
 }
 
 export function habitRow(S, item) {
@@ -170,7 +178,7 @@ export function overview(S, T) {
     ${chips}
     <div class="wrap">
       ${travelArrivedCard(S)}
-      ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30))}
+      ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused))}
       <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
       ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
       ${list}
