@@ -255,7 +255,8 @@ export function distanceView(S, T) {
     mapData.next = null;
   }
 
-  const recent = j.reached.slice(-4).reverse();
+  // Erreichte Städte: die letzten vier, auf Wunsch alle
+  const recent = (S.distAll ? j.reached : j.reached.slice(-4)).slice().reverse();
   const rows = [
     ...j.ahead.slice(0, 2).reverse().map((c) => ({ c, state: 'ahead' })),
     ...recent.map((c) => ({ c, state: 'done' }))
@@ -263,7 +264,9 @@ export function distanceView(S, T) {
       <span class="dest-dot"></span><span class="dest-name">${esc(c.name)}</span>
       <span class="small muted">${state === 'done' ? kmTxt(c.dist) : `noch ${kmTxt(Math.round((c.dist - span.km) * 10) / 10)}`}</span>
     </div>`).join('');
-  const more = j.reached.length > recent.length ? `<div class="small muted" style="padding: 4px 0 0 22px">und ${j.reached.length - recent.length} weitere davor</div>` : '';
+  const more = j.reached.length > 4
+    ? `<button type="button" class="link-btn" data-action="dist-all" style="margin-left: 14px">${S.distAll ? 'Weniger zeigen' : `Alle ${j.reached.length} erreichten Städte zeigen`}</button>`
+    : '';
 
   const startOpts = STARTS.map((n) => `<option value="${esc(n)}"${n === startName ? ' selected' : ''}>${esc(n)}</option>`).join('');
 

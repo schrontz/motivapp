@@ -141,6 +141,7 @@ export const clicks = {
   'travel-pick': ({ id }) => pick(id),
   'travel-none': () => { S.celebrateId = null; render(); },
   'travel-stage-ok': () => { S.stageCelebrate = null; render(); },
+  'dist-all': () => { S.distAll = !S.distAll; render(); },
   'travel-clear': () => { S.travelSheet = false; return clearGoal(); }
 };
 
