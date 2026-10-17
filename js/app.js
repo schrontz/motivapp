@@ -53,7 +53,7 @@ setRenderer(() => {
   }
   unmountDistanceMap();
   root.innerHTML = html;
-  if (r.name === 'distance') mountDistanceMap();
+  if (r.name === 'distance') { mountDistanceMap(); distance.prefetchWiki(); }
   if (S.sheet) {
     const input = document.getElementById('sheet-val');
     if (input && S.sheet.focus) { input.focus(); input.select(); S.sheet.focus = false; }
@@ -65,6 +65,7 @@ window.addEventListener('hashchange', (e) => {
   S.sheet = null;
   S.pauseSheet = null;
   S.travelSheet = false;
+  S.cityInfo = null;
   S.form = null;
   const r = route();
   imports.resetImportsExcept(r.name);
@@ -119,7 +120,7 @@ root.addEventListener('keydown', (e) => {
     e.preventDefault();
     document.querySelector('[data-action="sheet-save"]').click();
   }
-  if (e.key === 'Escape' && (S.sheet || S.pauseSheet || S.travelSheet)) { S.sheet = null; S.pauseSheet = null; S.travelSheet = false; render(); }
+  if (e.key === 'Escape' && (S.sheet || S.pauseSheet || S.travelSheet || S.cityInfo)) { S.sheet = null; S.pauseSheet = null; S.travelSheet = false; S.cityInfo = null; render(); }
 });
 
 // ───────────── Start ─────────────

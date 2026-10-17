@@ -1,8 +1,8 @@
 // Aktionen: „Wie weit bin ich gekommen?“ – Zeitraum, Startort, Reiseziel.
 
 import * as db from '../db.js';
-import { S, local, render, persist, toast } from '../core.js';
-import { walked, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus } from '../distance.js';
+import { S, local, render, persist, toast, route } from '../core.js';
+import { walked, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus, withPlaces, placeOf, wikiTitle, pickSummary, titleMatches } from '../distance.js';
 
 const total = () => walked(S.activity || []).km;
 
@@ -123,6 +123,56 @@ async function deletePlace(name) {
   await persist(() => db.deletePlace(place.id));
 }
 
+// ───────────── Stadt-Wissen ─────────────
+
+// Koordinaten zu einem Namen (feste Ziele, eigene Orte, Reiseziele) – damit der richtige Artikel gewählt wird
+function placeByName(name) {
+  const known = withPlaces(S.places).find((c) => c.name === name);
+  if (known) return known;
+  const goal = (S.travel || []).find((g) => g.city === name);
+  return goal ? placeOf(goal) : null;
+}
+
+// Wikipedia-Auszug laden: erst aus dem Gerätespeicher, dann Kurzfassung, sonst Suche. Ergebnis in S.wiki[name].
+const WIKI_DAYS = 30;
+export async function loadWiki(name) {
+  if (!name || S.wiki[name]) return;
+  const key = 'wiki.' + name;
+  try {
+    const hit = JSON.parse(local.get(key) || 'null');
+    if (hit && Date.now() - hit.at < WIKI_DAYS * 86400000) { S.wiki[name] = hit.data ? { state: 'ok', data: hit.data } : { state: 'none' }; return; }
+  } catch { /* egal */ }
+  S.wiki[name] = { state: 'loading' };
+  const place = placeByName(name);
+  let data = null;
+  try {
+    data = pickSummary(await db.wikiSummary(wikiTitle(name)), place);
+    if (!data) {
+      // Rückfall: Suche, z. B. bei eigenen Orten oder Begriffsklärungen
+      const label = (S.places || []).find((p) => p.name === name)?.label || '';
+      const titles = (await db.wikiSearch(`${name} ${label.split(',')[0] || ''}`.trim())).filter((t) => titleMatches(t, name));
+      for (const title of titles) {
+        data = pickSummary(await db.wikiSummary(title), place);
+        if (data) break;
+      }
+    }
+    S.wiki[name] = data ? { state: 'ok', data } : { state: 'none' };
+    local.set(key, JSON.stringify({ at: Date.now(), data }));
+  } catch (err) {
+    console.warn(err);
+    S.wiki[name] = { state: 'error' };
+  }
+  if (route().name === 'distance') render();
+}
+
+// Nach dem Zeichnen der Strecken-Seite: Infos für die gerade gefeierte Stadt vorladen
+export function prefetchWiki() {
+  const done = S.celebrateId && (S.travel || []).find((g) => g.id === S.celebrateId);
+  if (done) loadWiki(done.city);
+  if (S.stageCelebrate) loadWiki(S.stageCelebrate.name);
+  if (S.cityInfo) loadWiki(S.cityInfo);
+}
+
 async function clearGoal() {
   const cur = activeGoal(S.travel);
   if (!cur) return;
@@ -142,6 +192,8 @@ export const clicks = {
   'travel-none': () => { S.celebrateId = null; render(); },
   'travel-stage-ok': () => { S.stageCelebrate = null; render(); },
   'dist-all': () => { S.distAll = !S.distAll; render(); },
+  'city-info': ({ id }) => { S.cityInfo = id; if (S.wiki[id] && S.wiki[id].state === 'error') delete S.wiki[id]; render(); },
+  'city-close': () => { S.cityInfo = null; render(); },
   'travel-clear': () => { S.travelSheet = false; return clearGoal(); }
 };
 

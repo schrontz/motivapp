@@ -136,3 +136,27 @@ test('Etappen: Orte nahe der Linie, mit Abstand, Halbzeit, Ziel am Ende', async 
   assert.deepEqual(st2.passedThisMonth.map((s) => s.name), ['Koblenz']);
   assert.equal(stageStatus(dus, 0).next.name, 'Wiesbaden');
 });
+
+test('Stadt-Wissen: Titel, Prüfung der Wikipedia-Antwort, Anriss', async () => {
+  const { wikiTitle, pickSummary, teaser, city } = await import('../js/distance.js');
+  assert.equal(wikiTitle('Luxemburg'), 'Luxemburg (Stadt)');
+  assert.equal(wikiTitle('Köln'), 'Köln');
+  const ok = { type: 'standard', title: 'Köln', description: 'Großstadt in NRW', extract: 'Köln ist eine Großstadt.', coordinates: { lat: 50.94, lon: 6.96 }, thumbnail: { source: 'https://x/k.jpg' }, content_urls: { mobile: { page: 'https://de.m.wikipedia.org/wiki/K%C3%B6ln' } } };
+  const s = pickSummary(ok, city('Köln'));
+  assert.equal(s.title, 'Köln');
+  assert.equal(s.image, 'https://x/k.jpg');
+  assert.equal(s.url, 'https://de.m.wikipedia.org/wiki/K%C3%B6ln');
+  assert.equal(pickSummary({ ...ok, type: 'disambiguation' }, city('Köln')), null, 'Begriffsklärung');
+  assert.equal(pickSummary({ ...ok, coordinates: { lat: 40.7, lon: -74 } }, city('Köln')), null, 'falscher Ort');
+  assert.equal(pickSummary({ ...ok, coordinates: { lat: 49.87, lon: 8.65 } }, city('Wiesbaden')), null, 'Nachbarort (Darmstadt statt Wiesbaden)');
+  assert.ok(pickSummary({ ...ok, coordinates: undefined }, city('Köln')), 'ohne Koordinaten okay');
+  assert.ok(pickSummary({ ...ok, title: 'Bali', coordinates: { lat: -8.34, lon: 115.09 } }, city('Bali')), 'Insel: Mittelpunkt weiter weg okay');
+  assert.equal(pickSummary({ ...ok, extract: '' }, city('Köln')), null);
+  const { titleMatches } = await import('../js/distance.js');
+  assert.equal(titleMatches('Bingen am Rhein', 'Bingen am Rhein'), true);
+  assert.equal(titleMatches('Darmstadt', 'Wiesbaden'), false);
+  assert.equal(titleMatches('Cefalù', 'Cefalu'), true, 'Akzente egal');
+  assert.equal(teaser('Kurz.'), 'Kurz.');
+  const long = 'Erster Satz ist hier ziemlich lang und erzählt etwas über die Stadt und ihre Geschichte. ' + 'Zweiter Satz. '.repeat(30);
+  assert.ok(teaser(long).endsWith('.') && teaser(long).length <= 220);
+});

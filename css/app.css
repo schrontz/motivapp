@@ -395,3 +395,14 @@ label.btn { position: relative; }
 .stage-names { line-height: 1.4; }
 .stage-party { display: flex; align-items: center; gap: 10px; background: var(--k-pink); border-radius: 14px; padding: 10px 6px 10px 12px; }
 .stage-party .goal-del { width: 36px; height: 36px; border: 0; background: transparent; }
+
+/* Stadt-Wissen */
+button.dest-row { width: 100%; border: 0; border-top: 1px solid var(--border); background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+button.dest-row:first-child { border-top: 0; }
+.dest-more { color: var(--muted); font-size: 20px; line-height: 1; }
+.did-you-know { background: rgba(255, 255, 255, 0.16); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.did-you-know p { margin: 0; font-size: 14px; line-height: 1.45; }
+.dyk-more { align-self: flex-start; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; font-size: 14px; text-decoration: underline; padding: 6px 0 0; min-height: 32px; }
+.stage-dyk .did-you-know { background: var(--k-pink); margin-top: 0; }
+.city-img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 16px; background: var(--soft); }
+.city-text { font-size: 15px; line-height: 1.55; }

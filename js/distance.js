@@ -265,3 +265,45 @@ export function stageStatus(stages, total, monthKm = 0) {
     passedThisMonth: stages.filter((st) => st.dist > monthFrom && st.dist <= total)
   };
 }
+
+// ───────────── Stadt-Wissen (Wikipedia) ─────────────
+
+// Artikel, deren Titel vom Ortsnamen abweicht
+const WIKI_TITLES = {
+  'Luxemburg': 'Luxemburg (Stadt)', 'New York': 'New York City', 'Sansibar': 'Sansibar-Stadt',
+  'Valencia': 'Valencia', 'Bali': 'Bali', 'Nordpol': 'Nordpol', 'Südpol': 'Südpol'
+};
+export const wikiTitle = (name) => WIKI_TITLES[name] || name;
+const WIKI_WIDE = new Set(['Bali', 'Sansibar', 'Nordkap', 'Sylt']);
+
+// Suchtreffer nur nehmen, wenn der Ortsname im Titel steckt („Bingen am Rhein“ passt zu „Bingen“, „Darmstadt“ nicht zu „Wiesbaden“)
+export function titleMatches(title, name) {
+  const first = norm(name).split(/[\s,(-]+/)[0];
+  return !!first && norm(title).includes(first);
+}
+
+// Antwort der Wikipedia-Kurzfassung prüfen: kein Begriffsklärungs-Artikel, und – wenn Koordinaten da sind – in der Nähe des Orts
+export function pickSummary(json, place) {
+  if (!json || json.type === 'disambiguation' || !json.extract) return null;
+  if (place && json.coordinates && Number.isFinite(place.lat) && Math.abs(place.lat) < 89) {
+    const d = km({ lat: json.coordinates.lat, lng: json.coordinates.lon }, place);
+    // Städte: Artikel-Punkt liegt im Zentrum (≤ 25 km). Inseln/Regionen: Mittelpunkt der Fläche, darum großzügiger.
+    if (d > (WIKI_WIDE.has(place.name) ? 150 : 25)) return null; // anderer Ort (gleichen Namens oder ein Nachbarort)
+  }
+  return {
+    title: json.title,
+    description: json.description || '',
+    extract: json.extract,
+    image: json.thumbnail ? json.thumbnail.source : null,
+    url: (json.content_urls && json.content_urls.mobile && json.content_urls.mobile.page) || `https://de.wikipedia.org/wiki/${encodeURIComponent(json.title)}`
+  };
+}
+
+// Kurzer Anriss für die Feier: die ersten ein, zwei Sätze, höchstens ~220 Zeichen
+export function teaser(text, max = 220) {
+  const t = String(text || '').trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  return end > 80 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, '') + ' …';
+}

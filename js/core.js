@@ -34,6 +34,8 @@ export const S = {
   hasPlacesSchema: false,
   hasStagesSchema: false,
   stageCelebrate: null,
+  wiki: {},
+  cityInfo: null,
   travelQuery: '',
   travelResults: null,
   travelSearching: false,

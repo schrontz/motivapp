@@ -47,7 +47,7 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 | `js/auto.js` | Withings: Trainingsarten, Auto-Abhaken, Kacheln – getestet |
 | `js/strength.js` | Alpha-CSV, Zusammenführen, Steigerung, 1RM – getestet |
 | `js/body.js` | Renpho-CSV, Verlauf mit 2-Wochen-Schnitt – getestet |
-| `js/distance.js` | Strecke, Luftlinie, Reiseziele, Etappen, Vorschläge, Ortssuche – getestet |
+| `js/distance.js` | Strecke, Luftlinie, Reiseziele, Etappen, Vorschläge, Ortssuche, Stadt-Wissen (Wikipedia) – getestet |
 | `js/map.js` | Karte (Leaflet + OpenStreetMap, lädt erst auf der Strecken-Seite) |
 | `js/dates.js` | Datums-Hilfen |
 | `js/db.js` | Supabase-Zugriff + Demo-Daten (`?demo`) |

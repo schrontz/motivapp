@@ -1,6 +1,6 @@
 // „Wie weit bin ich gekommen?“ – Strecke als Kreis auf der Karte, zusammengezählt. Dazu ein Reiseziel ohne Termin.
 
-import { STARTS, walked, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus } from '../distance.js';
+import { STARTS, walked, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus, teaser } from '../distance.js';
 import { monthName, monthStart } from '../dates.js';
 import { svg, UI_ICONS } from '../icons.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
@@ -20,6 +20,45 @@ function goalOption(c, p, label = '', on = false) {
     <span>${label ? `<span class="goal-opt-label">${label}</span>` : ''}<span class="goal-opt-name">${esc(c.name)}</span>${c.label ? `<span class="small muted">${esc(c.label)}</span>` : ''}</span>
     <span class="small muted" style="text-align: right">noch ${kmTxt(c.left)}${p ? `<br>${duration(c.left / p.perDay)}` : ''}</span>
   </button>`;
+}
+
+// „Wusstest du …?“ – kurzer Wikipedia-Anriss in Feiern
+function didYouKnow(S, name) {
+  const w = S.wiki[name];
+  if (!w || w.state === 'none' || w.state === 'error') return '';
+  if (w.state === 'loading') return '<p class="small" style="opacity: 0.85">Wusstest du …? Einen Moment, ich schlage nach.</p>';
+  return `<div class="did-you-know">
+    <div class="small" style="font-weight: 700">Wusstest du …?</div>
+    <p class="small">${esc(teaser(w.data.extract))}</p>
+    <button type="button" class="dyk-more" data-action="city-info" data-id="${esc(name)}">Mehr über ${esc(name)}</button>
+  </div>`;
+}
+
+// Stadt-Infos als Sheet: Bild, Kurzbeschreibung, Auszug, Link zu Wikipedia (Quelle + Lizenz Pflicht)
+function citySheet(S) {
+  const name = S.cityInfo;
+  const w = S.wiki[name] || { state: 'loading' };
+  let body;
+  if (w.state === 'loading') body = '<p class="muted">Schlage bei Wikipedia nach …</p>';
+  else if (w.state === 'error') body = '<p class="muted">Wikipedia ist gerade nicht erreichbar – Internet da? Später nochmal antippen.</p>';
+  else if (w.state === 'none') body = `<p class="muted">Dazu habe ich keinen passenden Artikel gefunden.</p><a class="link-btn" href="https://de.wikipedia.org/w/index.php?search=${encodeURIComponent(name)}" target="_blank" rel="noopener">Bei Wikipedia suchen</a>`;
+  else {
+    const d = w.data;
+    body = `${d.image ? `<img class="city-img" src="${esc(d.image)}" alt="" loading="lazy">` : ''}
+      ${d.description ? `<div class="small muted">${esc(d.description)}</div>` : ''}
+      <p class="city-text">${esc(d.extract)}</p>
+      <a class="btn ghost" href="${esc(d.url)}" target="_blank" rel="noopener">Weiterlesen auf Wikipedia</a>
+      <p class="small muted">Text: Wikipedia, Lizenz CC BY-SA 4.0</p>`;
+  }
+  return `<button type="button" class="scrim" data-action="city-close" aria-label="Schließen"></button>
+  <section class="sheet goal-sheet" role="dialog" aria-modal="true" aria-label="${esc(name)}">
+    <div class="handle"></div>
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px">
+      <h2 style="font-size: 24px">${esc(name)}</h2>
+      <button type="button" class="goal-del" data-action="city-close" aria-label="Schließen" style="border: 0">${svg('M6 6l12 12M18 6L6 18', 20)}</button>
+    </div>
+    ${body}
+  </section>`;
 }
 
 // Alle Etappen als Punktreihe – erreichte gefüllt, die nächste umrandet, Namen nur für letzte und nächste
@@ -55,7 +94,7 @@ function goalCard(S, total, p) {
         <span class="goal-flag">${svg(UI_ICONS.flag, 16, 2.4)}</span>
         <span style="flex: 1"><b>Etappe geschafft: ${esc(party)}!</b><br><span class="small">Weiter nach ${esc(ss.next ? ss.next.name : goal.city)}.</span></span>
         <button type="button" class="goal-del" data-action="travel-stage-ok" aria-label="Schließen">${svg('M6 6l12 12M18 6L6 18', 16)}</button>
-      </div>` : ''}
+      </div>${didYouKnow(S, party) ? `<div class="stage-dyk">${didYouKnow(S, party)}</div>` : ''}` : ''}
       ${multi ? `<div class="small muted" style="font-weight: 600">${ss.next && ss.next.final ? 'Letzte Etappe' : `Etappe ${ss.reached + 1} von ${stages.length}`} · nach <b style="color: var(--text)">${esc(ss.next ? ss.next.name : goal.city)}</b></div>` : ''}
       <div class="goal-bar" role="img" aria-label="${multi ? `${legPct} Prozent der Etappe nach ${esc(ss.next.name)}` : `${pct} Prozent des Wegs nach ${esc(goal.city)}`}"><span style="width: ${multi ? legPct : pct}%"></span></div>
       <div style="display: flex; justify-content: space-between; font-size: 14px">${multi
@@ -86,6 +125,7 @@ function goalCard(S, total, p) {
       <div style="font-size: 14px; font-weight: 600; opacity: 0.9">Angekommen!</div>
       <div class="celebrate-city">${esc(done.city)}</div>
       <p>${kmTxt(st.dist)} zu Fuß von ${esc(short(done.start_city))}${first ? ' – dein erstes Reiseziel' : ''}. Das bleibt, egal was kommt.</p>
+      ${didYouKnow(S, done.city)}
     </section>
     <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
       <h2 style="font-size: 17px">Wie geht's weiter?</h2>
@@ -260,9 +300,14 @@ export function distanceView(S, T) {
   const rows = [
     ...j.ahead.slice(0, 2).reverse().map((c) => ({ c, state: 'ahead' })),
     ...recent.map((c) => ({ c, state: 'done' }))
-  ].map(({ c, state }) => `<div class="dest-row" data-state="${state}">
+  ].map(({ c, state }) => state === 'done'
+    ? `<button type="button" class="dest-row" data-state="done" data-action="city-info" data-id="${esc(c.name)}" aria-label="${esc(c.name)}: mehr erfahren">
       <span class="dest-dot"></span><span class="dest-name">${esc(c.name)}</span>
-      <span class="small muted">${state === 'done' ? kmTxt(c.dist) : `noch ${kmTxt(Math.round((c.dist - span.km) * 10) / 10)}`}</span>
+      <span class="small muted">${kmTxt(c.dist)}</span><span class="dest-more" aria-hidden="true">›</span>
+    </button>`
+    : `<div class="dest-row" data-state="ahead">
+      <span class="dest-dot"></span><span class="dest-name">${esc(c.name)}</span>
+      <span class="small muted">noch ${kmTxt(Math.round((c.dist - span.km) * 10) / 10)}</span>
     </div>`).join('');
   const more = j.reached.length > 4
     ? `<button type="button" class="link-btn" data-action="dist-all" style="margin-left: 14px">${S.distAll ? 'Weniger zeigen' : `Alle ${j.reached.length} erreichten Städte zeigen`}</button>`
@@ -285,6 +330,7 @@ export function distanceView(S, T) {
       <section class="card pad">
         <div class="dist-next">${nextLine}</div>
         <div class="dest-list">${rows}${more}</div>
+        ${j.reached.length ? '<p class="small muted" style="margin-top: 6px">Tipp: Erreichte Städte antippen – dann erfährst du etwas über sie.</p>' : ''}
       </section>
       ${reachedList(S)}
       <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
@@ -295,6 +341,7 @@ export function distanceView(S, T) {
     </div>
     ${nav('overview')}
     ${S.travelSheet && !month ? goalSheet(S, span.km, p) : ''}
+    ${S.cityInfo ? citySheet(S) : ''}
   </div>`;
 }
 
@@ -303,7 +350,7 @@ function reachedList(S) {
   if (!done.length) return '';
   return `<section class="card pad">
     <div class="small muted" style="font-weight: 600; margin-bottom: 6px">Deine Reiseziele</div>
-    ${done.map((g) => `<div class="dest-row"><span class="goal-flag">${svg(UI_ICONS.flag, 16, 2.4)}</span><span class="dest-name">${esc(g.city)}</span><span class="small muted">${shortDate(g.reached_on)}</span></div>`).join('')}
+    ${done.map((g) => `<button type="button" class="dest-row" data-action="city-info" data-id="${esc(g.city)}" aria-label="${esc(g.city)}: mehr erfahren"><span class="goal-flag">${svg(UI_ICONS.flag, 16, 2.4)}</span><span class="dest-name">${esc(g.city)}</span><span class="small muted">${shortDate(g.reached_on)}</span><span class="dest-more" aria-hidden="true">›</span></button>`).join('')}
   </section>`;
 }
 

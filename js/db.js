@@ -104,6 +104,22 @@ export async function deletePlace(id) {
   check(await client.from('travel_places').delete().eq('id', id));
 }
 
+// Wikipedia: Kurzfassung eines Artikels (Auszug + Bild) und Volltextsuche als Rückfall
+export async function wikiSummary(title) {
+  const res = await fetch('https://de.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title.replace(/ /g, '_')), { headers: { Accept: 'application/json' } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Wikipedia nicht erreichbar (' + res.status + ')');
+  return res.json();
+}
+
+export async function wikiSearch(query) {
+  const url = 'https://de.wikipedia.org/w/api.php?' + new URLSearchParams({ action: 'query', list: 'search', srsearch: query, srlimit: '3', format: 'json', origin: '*' });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Wikipedia-Suche nicht erreichbar (' + res.status + ')');
+  const data = await res.json();
+  return ((data.query && data.query.search) || []).map((r) => r.title);
+}
+
 // Orte suchen über OpenStreetMap (Nominatim). Nur auf Knopfdruck – die Nutzungsregeln erlauben max. 1 Anfrage/Sekunde.
 export async function searchPlaces(query) {
   const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
