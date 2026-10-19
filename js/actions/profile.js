@@ -3,7 +3,7 @@
 import * as db from '../db.js';
 import { S, render, toast, persist } from '../core.js';
 import { today } from '../dates.js';
-import { alphaOn, bodyOn } from '../views.js';
+import { alphaOn, bodyOn, reduceOn } from '../views.js';
 
 const TILE_ORDER = ['steps', 'training', 'body', 'active', 'distance'];
 
@@ -33,7 +33,11 @@ function exportData() {
     pausen: S.pauses,
     krafteinheiten: S.strength,
     koerperwerte: S.body,
-    steigerungsplaene: S.plans
+    steigerungsplaene: S.plans,
+    reiseziele: S.travel,
+    eigene_orte: S.places,
+    weniger_einstellungen: S.reduceSettings,
+    weniger_ereignisse: S.reduceEvents
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -70,7 +74,7 @@ export const clicks = {
     if (S.hasWithingsSchema) await persist(() => db.updateProfile(S.profile.id, { tiles: S.profile.tiles }));
   },
   'module-toggle': async ({ id }) => {
-    const on = id === 'body' ? bodyOn(S) : alphaOn(S);
+    const on = id === 'body' ? bodyOn(S) : id === 'weniger' ? reduceOn(S) : alphaOn(S);
     const p = setModule(id, !on);
     render();
     await p;

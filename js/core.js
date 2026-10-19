@@ -35,6 +35,10 @@ export const S = {
   hasStagesSchema: false,
   stageCelebrate: null,
   wiki: {},
+  reduceSettings: [],
+  reduceEvents: [],
+  hasReduceSchema: false,
+  reduceUndo: null,
   cityInfo: null,
   travelQuery: '',
   travelResults: null,
@@ -145,6 +149,7 @@ export async function persist(fn, errorText = 'Speichern hat nicht geklappt – 
     const msg = String((err && err.message) || '');
     let text = errorText;
     if (/schedule_min/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 002 (Mini-Woche) im SQL-Editor ausführen.';
+    else if (/reduce_/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 009 (Weniger von …) im SQL-Editor ausführen.';
     else if (/stages_seen/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 008 (Etappen) im SQL-Editor ausführen.';
     else if (/travel_places|column .*lat/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 007 (Meine Orte) im SQL-Editor ausführen.';
     else if (/travel_/.test(msg)) text = 'Bitte zuerst das Datenbank-Update 006 (Reiseziele) im SQL-Editor ausführen.';

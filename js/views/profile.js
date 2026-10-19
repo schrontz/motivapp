@@ -1,6 +1,7 @@
 // Profil: Verbindungen, Module, Kacheln, Installieren, Login.
 
 import { APP_VERSION } from '../config.js';
+import { reduceProfileCard } from './reduce.js';
 import { svg, UI_ICONS, COLORS } from '../icons.js';
 import { ago, alphaOn, bodyOn, esc, nav, shortDate } from './ui.js';
 
@@ -123,6 +124,7 @@ export function profile(S, email) {
       ${withingsCard(S)}
       ${alphaCard(S)}
       ${bodyCard(S)}
+      ${reduceProfileCard(S)}
       ${tilesCard(S)}
       <section style="display: flex; flex-direction: column; gap: 10px">
         <h2 class="h3">Deine Daten</h2>

@@ -13,9 +13,10 @@ import * as imports from './actions/imports.js';
 import * as body from './actions/body.js';
 import * as profile from './actions/profile.js';
 import * as distance from './actions/distance.js';
+import * as reduce from './actions/reduce.js';
 import { mountDistanceMap, unmountDistanceMap } from './map.js';
 
-const MODULES = [habits, withings, strength, imports, body, profile, distance];
+const MODULES = [habits, withings, strength, imports, body, profile, distance, reduce];
 const CLICKS = Object.assign({}, ...MODULES.map((m) => m.clicks || {}));
 const CHANGES = Object.assign({}, ...MODULES.map((m) => m.changes || {}));
 const SUBMITS = Object.assign({}, ...MODULES.map((m) => m.submits || {}));
@@ -35,6 +36,8 @@ setRenderer(() => {
     case 'training': html = r.id ? V.sessionView(S, T, r.id) : V.trainingView(S, T); break;
     case 'steps': html = V.stepsView(S, T); break;
     case 'distance': html = V.distanceView(S, T); break;
+    case 'weniger': html = V.reduceView(S, T); break;
+    case 'weniger-einrichten': html = V.reduceSettingsView(S, T); break;
     case 'import': html = V.importView(S); break;
     case 'body': html = V.bodyView(S, T); break;
     case 'body-import': html = V.bodyImportView(S); break;
@@ -122,6 +125,17 @@ root.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape' && (S.sheet || S.pauseSheet || S.travelSheet || S.cityInfo)) { S.sheet = null; S.pauseSheet = null; S.travelSheet = false; S.cityInfo = null; render(); }
 });
+
+// Timer auf Übersicht und „Weniger rauchen“ aktuell halten – nur, wenn gerade nichts offen ist
+setInterval(() => {
+  if (!S.loaded || document.visibilityState !== 'visible') return;
+  const name = route().name;
+  if (name !== 'overview' && name !== 'weniger') return;
+  if (S.sheet || S.pauseSheet || S.travelSheet || S.cityInfo) return;
+  const a = document.activeElement;
+  if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
+  render();
+}, 30000);
 
 // ───────────── Start ─────────────
 

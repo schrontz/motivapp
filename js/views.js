@@ -10,3 +10,4 @@ export * from './views/body.js';
 export * from './views/imports.js';
 export * from './views/profile.js';
 export * from './views/distance.js';
+export * from './views/reduce.js';

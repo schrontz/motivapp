@@ -406,3 +406,38 @@ button.dest-row:first-child { border-top: 0; }
 .stage-dyk .did-you-know { background: var(--k-pink); margin-top: 0; }
 .city-img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 16px; background: var(--soft); }
 .city-text { font-size: 15px; line-height: 1.55; }
+
+/* Weniger rauchen */
+.reduce-card { display: flex; flex-direction: column; gap: 12px; }
+.reduce-head { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; font-size: 16px; }
+.reduce-ico { width: 36px; height: 36px; border-radius: 12px; background: var(--k-teal); color: var(--c-teal); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.reduce-row { display: flex; align-items: center; gap: 14px; }
+.reduce-big { font-size: 20px; font-weight: 700; }
+.btn.reduce-btn { border-color: var(--c-teal); color: var(--c-teal); height: 48px; font-size: 16px; }
+.reduce-foot { display: flex; justify-content: space-between; }
+.reduce-soft { background: var(--k-teal); }
+.reduce-segs { display: flex; gap: 6px; margin-top: 4px; }
+.reduce-segs span { flex: 1; height: 8px; border-radius: 4px; }
+.reduce-count { font-size: 40px; font-weight: 700; line-height: 1.1; }
+.reduce-line { position: relative; height: 30px; }
+.reduce-line::before { content: ''; position: absolute; left: 0; right: 0; top: 14px; height: 2px; background: var(--border); }
+.reduce-dot { position: absolute; top: 8px; width: 14px; height: 14px; border-radius: 50%; background: var(--c-teal); border: 2px solid var(--surface); box-sizing: border-box; }
+.reduce-bars { position: relative; display: flex; align-items: flex-end; gap: 6px; }
+.reduce-bar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; z-index: 1; min-width: 0; }
+.reduce-bar-fill { width: 100%; border-radius: 6px; background: var(--c-teal); }
+.reduce-bar-fill[data-today="true"] { opacity: 0.55; }
+.reduce-timer { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.reduce-timer .btn { width: 100%; }
+.reduce-ring-big { font-size: 30px; font-weight: 700; fill: var(--text); font-family: inherit; }
+.reduce-saved { background: var(--c-teal); color: var(--on-accent); border-radius: 22px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; }
+.reduce-saved p { font-size: 14px; line-height: 1.45; opacity: 0.92; }
+.reduce-euro { font-size: 36px; font-weight: 700; line-height: 1.1; }
+.mini-round { width: 44px; height: 44px; border-radius: 22px; border: 1.5px solid var(--border); background: var(--surface); font-size: 22px; color: var(--text); }
+.reduce-grid { display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px; gap: 8px; align-items: end; }
+.reduce-grid.two { grid-template-columns: minmax(0, 1fr) 96px; }
+.reduce-grid > b { padding-bottom: 14px; }
+.reduce-grid .field span { font-size: 12px; color: var(--muted); }
+.reduce-grid .input { min-width: 0; }
+.reduce-cost { background: var(--k-teal); border-radius: 14px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.reduce-cost b { font-size: 20px; color: var(--c-teal); }
+.reduce-check { width: 26px; height: 26px; accent-color: var(--c-teal); flex: none; }

@@ -59,8 +59,8 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true };
-  const [profiles, categories, habits, logs, pauses, extra, strength, body, travel] = await Promise.all([
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true };
+  const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
     fetchAll('habits', 'sort_order'),
@@ -69,9 +69,41 @@ export async function loadAll() {
     loadWithingsData(),
     loadStrengthData(),
     loadBodyData(),
-    loadTravelData()
+    loadTravelData(),
+    loadReduceData()
   ]);
-  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body, ...travel };
+  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body, ...travel, ...reduce };
+}
+
+// „Weniger von …“ (Update 009). Fehlt es noch, läuft die App ohne weiter.
+export async function loadReduceData() {
+  try {
+    const [settings, events] = await Promise.all([
+      client.from('reduce_settings').select('*').then(check),
+      fetchAll('reduce_events', 'at')
+    ]);
+    return { reduceSettings: settings || [], reduceEvents: events, hasReduceSchema: true };
+  } catch (err) {
+    console.warn('„Weniger von …“ nicht verfügbar (Datenbank-Update 009 schon ausgeführt?)', err);
+    return { reduceSettings: [], reduceEvents: [], hasReduceSchema: false };
+  }
+}
+
+export async function saveReduceSettings(row) {
+  const { id, user_id, created_at, ...fields } = row;
+  fields.updated_at = new Date().toISOString();
+  if (isDemo) return { ...fields, id: id || demoId() };
+  return check(await client.from('reduce_settings').upsert(fields, { onConflict: 'user_id,kind' }).select().single());
+}
+
+export async function addReduceEvent(event) {
+  if (isDemo) return { ...event, id: demoId() };
+  return check(await client.from('reduce_events').insert(event).select().single());
+}
+
+export async function deleteReduceEvent(id) {
+  if (isDemo || !id) return;
+  check(await client.from('reduce_events').delete().eq('id', id));
 }
 
 // Reiseziele. Fehlt das Datenbank-Update 006 noch, läuft die App ohne weiter.
@@ -417,6 +449,19 @@ const demo = (() => {
     unit('a' + k, w.start_at, Math.round(w.duration_min) - 1, k);
   }
   for (const k of [40, 44, 47]) unit('a' + k, new Date(addDays(t, -k) + 'T18:00:00').toISOString(), 48, k);
+  // „Weniger rauchen“: vor 20 Tagen begonnen – erste Woche ~13 am Tag, danach langsam weniger
+  const reduceEvents = [];
+  for (let i = 20; i >= 0; i -= 1) {
+    const d = addDays(t, -i);
+    const n = i === 0 ? 4 : (i > 13 ? 12 + (i % 3) : 9 + (i % 3));
+    for (let k = 0; k < n; k += 1) {
+      const minutes = 7 * 60 + 20 + Math.round(k * (15 * 60) / n) + (k % 3) * 7;
+      if (i === 0 && minutes > new Date().getHours() * 60 + new Date().getMinutes() - 30) break;
+      const at = new Date(d + 'T00:00:00'); at.setMinutes(minutes);
+      reduceEvents.push({ id: 'r' + i + '-' + k, kind: 'rauchen', at: at.toISOString(), day: d });
+    }
+  }
+  const reduceSettings = [{ id: 'rs1', kind: 'rauchen', started_on: addDays(t, -20), costs: { tobacco_price: 6.75, tobacco_g: 30, paper_price: 2, paper_qty: 100, filter_price: 2, filter_qty: 120, g_per_unit: 0.6 }, night_from: '23:00', night_to: '07:00', step_min: 5, adjust_min: 0, show_card: true }];
   const plans = [{ id: 'plan-curls', exercise: 'Curls', equipment: 'Kurzhanteln', sets: 3, start_reps: 20, kg: 7, plus_reps: 2, every_weeks: 2, max_reps: 40, kg_step: 2, started_on: weekStart(addDays(t, -7)) }];
   // Körperwerte: alle 3–4 Tage eine Messung, leicht schwankend mit sanftem Trend
   const body = [];
@@ -431,9 +476,9 @@ const demo = (() => {
   }
   return {
     body,
-    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body'], tiles: ['steps', 'training', 'body'] },
+    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body', 'weniger'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
-    activity, workouts, dismissals: [], strength, plans, travel: [], places: [],
+    activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
   };
 })();
