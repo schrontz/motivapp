@@ -2,14 +2,23 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast, route } from '../core.js';
-import { walked, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus, withPlaces, placeOf, wikiTitle, pickSummary, titleMatches } from '../distance.js';
+import { walkedFor, travelFrom, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus, withPlaces, placeOf, wikiTitle, pickSummary, titleMatches } from '../distance.js';
 
-const total = () => walked(S.activity || []).km;
+const total = () => walkedFor(S).km;
 
 // Ziel erreicht? Dann Ankunftstag speichern – die Feier zeigt die Seite. Jeden Versuch nur einmal (kein Fehler-Kreislauf).
 const tried = new Set();
 export function checkArrival(T) {
   if (!S.loaded || !S.hasTravelSchema) return;
+  // Rückwirkend „angekommen“, aber noch nicht angesehen und nach dem Zähl-Start doch nicht erreicht? Wieder öffnen.
+  const open = activeGoal(S.travel);
+  for (const g of (S.activity || []).length && !open ? S.travel || [] : []) {
+    if (g.id && g.reached_on && !g.seen && !goalStatus(g, total()).reached) {
+      g.reached_on = null;
+      persist(() => db.saveTravelGoal(g));
+      break; // höchstens ein offenes Ziel
+    }
+  }
   const goal = activeGoal(S.travel);
   if (!goal || !goal.id || tried.has(goal.id)) return;
   if (!goalStatus(goal, total()).reached) return;
@@ -202,6 +211,13 @@ export const changes = {
     S.distRange = el.value;
     local.set('distRange', el.value);
     render();
+  },
+  'dist-from': async ({ el }) => {
+    const value = el.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !S.profile) return;
+    S.profile.travel_from = value;
+    render();
+    await persist(() => db.updateProfile(S.profile.id, { travel_from: value }));
   },
   'dist-start': async ({ el }) => {
     const value = el.value;

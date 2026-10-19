@@ -51,6 +51,21 @@ const STARS = ['Berlin', 'Hamburg', 'München', 'Paris', 'London', 'Amsterdam', 
 // Startorte zur Auswahl
 export const STARTS = ['Frankfurt am Main', 'Berlin', 'Hamburg', 'München', 'Köln', 'Düsseldorf', 'Stuttgart', 'Leipzig', 'Hannover', 'Nürnberg', 'Wien', 'Zürich'];
 
+// Ab wann zählt die Strecke? Eigenes Datum (Profil) – sonst wie früher: 30 Tage vor dem Verbinden mit Withings
+// (so weit hat der erste Abgleich zurückgeholt). Spätere Abgleiche holen mehr Vergangenheit – die zählt dann nicht mit.
+export function travelFrom(S) {
+  if (S.profile && S.profile.travel_from) return String(S.profile.travel_from).slice(0, 10);
+  const c = S.withings && S.withings.connected_at;
+  if (c) return addDays(String(c).slice(0, 10), -30);
+  return '0000-00-00';
+}
+
+// Strecke seit dem Zähl-Start (optional bis/ab einem Zeitraum)
+export function walkedFor(S, fromDay = '0000-00-00', toDay = '9999-12-31') {
+  const from = travelFrom(S);
+  return walked(S.activity || [], fromDay > from ? fromDay : from, toDay);
+}
+
 export function city(name) {
   return CITIES.find((c) => c.name === name) || CITIES[0];
 }

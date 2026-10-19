@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { km, city, walked, journey, pace, CITIES, STARTS } from '../js/distance.js';
+import { km, city, walked, journey, pace, CITIES, STARTS, travelFrom, walkedFor } from '../js/distance.js';
 
 test('Luftlinie stimmt ungefähr', () => {
   const f = city('Frankfurt am Main');
@@ -159,4 +159,17 @@ test('Stadt-Wissen: Titel, Prüfung der Wikipedia-Antwort, Anriss', async () => 
   assert.equal(teaser('Kurz.'), 'Kurz.');
   const long = 'Erster Satz ist hier ziemlich lang und erzählt etwas über die Stadt und ihre Geschichte. ' + 'Zweiter Satz. '.repeat(30);
   assert.ok(teaser(long).endsWith('.') && teaser(long).length <= 220);
+});
+
+test('Strecke zählt ab: eigenes Datum, sonst 30 Tage vor dem Verbinden', () => {
+  const activity = [{ day: '2025-11-01', distance_m: 500000 }, { day: '2026-09-20', distance_m: 3000 }, { day: '2026-10-15', distance_m: 2000 }];
+  const S = { activity, withings: { connected_at: '2026-10-12T10:00:00Z' }, profile: { travel_from: null } };
+  assert.equal(travelFrom(S), '2026-09-12');
+  assert.equal(walkedFor(S).km, 5);
+  assert.equal(walkedFor(S).first, '2026-09-20');
+  S.profile.travel_from = '2026-10-01';
+  assert.equal(walkedFor(S).km, 2);
+  // Monat: späteres Datum gewinnt
+  assert.equal(walkedFor(S, '2026-09-01', '2026-09-30').km, 0);
+  assert.equal(travelFrom({ activity }), '0000-00-00');
 });

@@ -1,6 +1,6 @@
 // „Wie weit bin ich gekommen?“ – Strecke als Kreis auf der Karte, zusammengezählt. Dazu ein Reiseziel ohne Termin.
 
-import { STARTS, walked, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus, teaser } from '../distance.js';
+import { STARTS, walkedFor, travelFrom, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus, teaser } from '../distance.js';
 import { monthName, monthStart } from '../dates.js';
 import { svg, UI_ICONS } from '../icons.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
@@ -242,8 +242,8 @@ function goalSheet(S, total, p) {
 export function distanceView(S, T) {
   const startName = startOf(S);
   const month = S.distRange === 'month';
-  const all = walked(S.activity || []);
-  const span = month ? walked(S.activity || [], monthStart(T), T) : all;
+  const all = walkedFor(S);
+  const span = month ? walkedFor(S, monthStart(T), T) : all;
   const j = journey(startName, span.km, S.places);
   const pc = pace(S.activity || [], T);
   const p = pc && pc.days >= 5 ? pc : null; // Schätzungen erst mit ein paar Tagen Daten
@@ -336,6 +336,9 @@ export function distanceView(S, T) {
       <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
         <label class="small muted" for="dist-start">Startort</label>
         <select id="dist-start" class="input" data-action="dist-start">${startOpts}</select>
+        ${S.profile && 'travel_from' in S.profile ? `<label class="small muted" for="dist-from" style="margin-top: 6px">Strecke zählt ab</label>
+        <input id="dist-from" class="input" type="date" max="${T}" value="${esc(travelFrom(S))}" data-action="dist-from">
+        <span class="small muted">Früher gelaufene Tage holt Withings zwar nach – hier zählt, was du ab diesem Tag läufst.</span>` : ''}
       </section>
       <p class="hint" style="padding: 0 4px">Deine Kilometer sind echt gelaufen – aus deinen Schritten bei Withings. Nur der Weg zum Ziel ist Luftlinie.</p>
     </div>
@@ -362,7 +365,7 @@ export function travelArrivedCard(S) {
     const goal = S.hasStagesSchema && activeGoal(S.travel);
     if (!goal || !goal.id) return '';
     const stages = stagesFor(goal, S.places);
-    const ss = stageStatus(stages, walked(S.activity || []).km);
+    const ss = stageStatus(stages, walkedFor(S).km);
     if (ss.reached <= (goal.stages_seen || 0) || !ss.prev) return '';
     return `<a class="card pad dist-link travel-arrived" href="#/distance">
       <span class="goal-flag big">${svg(UI_ICONS.flag, 20, 2.4)}</span>
