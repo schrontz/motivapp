@@ -252,7 +252,7 @@ export async function loadWithingsData() {
     const since = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
     const [status, activity, workouts, dismissals] = await Promise.all([
       client.rpc('withings_status').then(check),
-      client.from('daily_activity').select('*').gte('day', since).order('day').then(check),
+      fetchAll('daily_activity', 'day'), // alle Tage: die Strecke „seit Start“ darf nie schrumpfen
       client.from('workouts').select('*').gte('day', since).order('start_at').then(check),
       fetchAll('auto_dismissals', 'day')
     ]);
