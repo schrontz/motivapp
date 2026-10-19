@@ -41,6 +41,7 @@ export const S = {
   reduceUndo: null,
   reduceCostBasis: 'recent',
   sleep: [],
+  heart: [],
   hasPulseSchema: false,
   cityInfo: null,
   travelQuery: '',

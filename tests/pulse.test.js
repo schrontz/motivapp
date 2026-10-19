@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { restValues, restSeries, lastRest, restCompare } from '../js/pulse.js';
 
 const n = (day, hr) => ({ day, hr_avg: hr });
-const a = (day, hr) => ({ day, steps: 5000, hr_min: hr });
+const a = (day, hr) => ({ day, rest_hr: hr, samples: 60 });
 const T = '2026-10-20';
 
 test('Quelle: Tageswerte, wenn nachts keine Uhr – heute zählt noch nicht', () => {

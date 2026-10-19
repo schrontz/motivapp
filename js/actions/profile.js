@@ -38,7 +38,8 @@ function exportData() {
     eigene_orte: S.places,
     weniger_einstellungen: S.reduceSettings,
     weniger_ereignisse: S.reduceEvents,
-    ruhepuls_naechte: S.sleep
+    ruhepuls_naechte: S.sleep,
+    ruhepuls_tage: S.heart
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');

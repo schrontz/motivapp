@@ -59,7 +59,7 @@ const PULSE = { key: 'rest', label: 'Ruhepuls', unit: 'bpm', digits: 0, color: '
 // Ruhepuls von Withings: Ø Puls im Schlaf, als Verlauf wie die Waagen-Werte
 export function pulseCard(S, T, fromDay, ranged) {
   if (!S.hasPulseSchema) return '';
-  const rest = restValues(S.sleep, S.activity, T);
+  const rest = restValues(S.sleep, S.heart, T);
   if (!rest) return '';
   const txt = REST_TEXT[rest.kind];
   const pts = restSeries(rest.vals, fromDay);
@@ -83,7 +83,7 @@ export function pulseCard(S, T, fromDay, ranged) {
 
 // Hinweis unter dem Puls – je nach Quelle
 export function pulseHint(S, T) {
-  const rest = S.hasPulseSchema && restValues(S.sleep, S.activity, T);
+  const rest = S.hasPulseSchema && restValues(S.sleep, S.heart, T);
   return rest ? ` Ruhepuls: ${REST_TEXT[rest.kind].hint.replace(/\.$/, '')}; Schlaf, Stress, Koffein und Rauchen bewegen ihn.` : '';
 }
 

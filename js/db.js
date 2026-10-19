@@ -3,7 +3,7 @@
 // - Demo (?demo in der Adresse): Beispieldaten im Speicher, nichts wird gespeichert.
 
 import { SUPABASE_URL, SUPABASE_KEY, SUPABASE_JS } from './config.js';
-import { today, addDays, diffDays, toDay, weekStart } from './dates.js';
+import { today, addDays, toDay, weekStart } from './dates.js';
 
 export const isDemo = new URLSearchParams(location.search).has('demo');
 
@@ -245,8 +245,8 @@ export async function deletePlan(id) {
 // Withings-Daten. Fehlt das Datenbank-Update 003 noch, läuft die App ohne Withings weiter.
 export async function loadWithingsData() {
   if (isDemo) {
-    const { activity, workouts, dismissals, withings, sleep } = structuredClone(demo);
-    return { activity, workouts, dismissals, withings, sleep, hasWithingsSchema: true, hasPulseSchema: true };
+    const { activity, workouts, dismissals, withings, sleep, heart } = structuredClone(demo);
+    return { activity, workouts, dismissals, withings, sleep, heart, hasWithingsSchema: true, hasPulseSchema: true };
   }
   try {
     const since = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
@@ -272,10 +272,12 @@ export async function loadWithingsData() {
 async function loadSleep(since) {
   try {
     const sleep = await client.from('sleep_summary').select('day, hr_avg, hr_min, hr_max, sleep_min').gte('day', since).order('day').then(check);
-    return { sleep: sleep || [], hasPulseSchema: true };
+    // Ruhigste halbe Stunde pro Tag (Update 011) – fehlt es, bleibt die Karte einfach weg
+    const heart = await client.from('daily_heart').select('day, rest_hr, samples').gte('day', since).order('day').then(check).catch((err) => { console.warn('Puls über den Tag fehlt noch (Update 011?)', err); return []; });
+    return { sleep: sleep || [], heart: heart || [], hasPulseSchema: true };
   } catch (err) {
     console.warn('Puls nicht verfügbar (Datenbank-Update 010 schon ausgeführt?)', err);
-    return { sleep: [], hasPulseSchema: false };
+    return { sleep: [], heart: [], hasPulseSchema: false };
   }
 }
 
@@ -489,16 +491,15 @@ const demo = (() => {
   // Puls wie bei Jan: Uhr nur tagsüber → niedrigster Wert des Tages um 60, seit „Weniger rauchen“ etwas niedriger
   let s2 = 11;
   const rnd2 = () => { s2 = (s2 * 9301 + 49297) % 233280; return s2 / 233280; };
-  for (const a of activity) {
-    const i = diffDays(a.day, t);
+  const heart = [];
+  for (let i = 90; i >= 0; i -= 1) {
+    if (rnd2() < 0.06) continue; // Tag ohne Uhr
     const after = i < 20 ? (20 - i) / 20 : 0;
-    a.hr_min = Math.round(60 + Math.sin(i / 5) * 1.2 + (rnd2() - 0.5) * 5 - after * 2.5);
-    a.hr_avg = a.hr_min + 18 + Math.round(rnd2() * 6);
-    a.hr_max = 130 + Math.round(rnd2() * 30);
+    heart.push({ day: addDays(t, -i), rest_hr: Math.round(66 + Math.sin(i / 9) * 1.2 + (rnd2() - 0.5) * 3 - after * 2.5), samples: 70 + Math.round(rnd2() * 20) });
   }
   const sleep = [];
   return {
-    body, sleep,
+    body, sleep, heart,
     profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body', 'weniger'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,

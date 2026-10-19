@@ -25,7 +25,7 @@ function agoTxt(min) {
 }
 
 function pulseOf(S, settings, T) {
-  const rest = S.hasPulseSchema && restValues(S.sleep, S.activity, T);
+  const rest = S.hasPulseSchema && restValues(S.sleep, S.heart, T);
   return rest ? { kind: rest.kind, ...restCompare(rest.vals, settings.started_on, T) } : null;
 }
 

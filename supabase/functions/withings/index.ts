@@ -3,7 +3,7 @@
 //
 // Aktionen (POST, JSON):
 //   { action: 'connect', code, redirect_uri }  → Code gegen Tokens tauschen (direkt nach dem Withings-Login)
-//   { action: 'sync', days? }                  → Schritte, Trainings, Puls und Schlaf abholen und speichern
+//   { action: 'sync', days? }                  → Schritte, Trainings, Puls (Tag + über den Tag) und Schlaf abholen und speichern
 //   { action: 'disconnect' }                   → Verbindung trennen (Tokens löschen, Daten bleiben)
 //
 // Benötigte Secrets (Supabase → Edge Functions → Secrets):
@@ -55,10 +55,12 @@ export function ymd(date: Date) {
 }
 
 // Lokales Datum eines Zeitpunkts in einer Zeitzone (z. B. „Europe/Berlin“)
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
 export function localDay(unixSeconds: number, timezone?: string) {
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
-      .format(new Date(unixSeconds * 1000));
+    const tz = timezone || 'Europe/Berlin';
+    if (!dayFormats.has(tz)) dayFormats.set(tz, new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }));
+    return dayFormats.get(tz)!.format(new Date(unixSeconds * 1000));
   } catch (_) {
     return ymd(new Date(unixSeconds * 1000));
   }
@@ -155,6 +157,76 @@ export async function fetchSleep(token: string, startDay: string, endDay: string
     startdateymd: startDay, enddateymd: endDay,
     data_fields: 'hr_average,hr_min,hr_max,total_sleep_time'
   }, 'series', token, fetcher, '/v2/sleep');
+}
+
+// ───────── Puls über den Tag (Uhr misst etwa alle 10 Minuten) ─────────
+// Withings liefert höchstens 24 Stunden pro Abruf → tageweise holen, 4 gleichzeitig.
+export async function fetchHeart(token: string, fromUnix: number, toUnix: number, fetcher: typeof fetch = fetch) {
+  const chunks: [number, number][] = [];
+  for (let t = fromUnix; t < toUnix; t += 86400) chunks.push([t, Math.min(toUnix, t + 86400) - 1]);
+  const out: { t: number; bpm: number }[] = [];
+  for (let i = 0; i < chunks.length; i += 4) {
+    const bodies = await Promise.all(chunks.slice(i, i + 4).map(([a, b]) => withingsPost('/v2/measure', {
+      action: 'getintradayactivity', startdate: String(a), enddate: String(b), data_fields: 'heart_rate'
+    }, token, fetcher)));
+    for (const body of bodies) {
+      const series = body && body.series ? body.series : {};
+      const entries: [string, any][] = Array.isArray(series) ? series.map((x: any) => [String(x.timestamp), x]) : Object.entries(series);
+      for (const [ts, v] of entries) {
+        const bpm = Number(v && v.heart_rate);
+        if (bpm > 0 && Number(ts) > 0) out.push({ t: Number(ts), bpm });
+      }
+    }
+  }
+  return out;
+}
+
+const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+// Ruhepuls eines Tages = ruhigste halbe Stunde: Werte in 10-Minuten-Fenster sortieren (Median pro Fenster),
+// dann drei Fenster hintereinander, davon der mittlere Wert – der niedrigste dieser Werte gewinnt.
+// So kann eine einzelne Fehlmessung (Uhr verrutscht) den Wert nicht nach unten ziehen.
+// Erst ab 18 Fenstern (≈ 3 Stunden getragen) aussagekräftig. Werte unter 40 oder über 200 gelten als Messfehler.
+export const MIN_WINDOWS = 18;
+export function restFromSamples(samples: { t: number; bpm: number }[]) {
+  const win = new Map<number, number[]>();
+  for (const s of samples) {
+    if (!(s.bpm >= 40 && s.bpm <= 200)) continue;
+    const k = Math.floor(s.t / 600);
+    if (!win.has(k)) win.set(k, []);
+    win.get(k)!.push(s.bpm);
+  }
+  const vals = new Map<number, number>();
+  for (const [k, list] of win) vals.set(k, median(list));
+  let best: number | null = null;
+  for (const [k, v] of vals) {
+    const b = vals.get(k + 1); const c = vals.get(k + 2);
+    if (b == null || c == null) continue;
+    const m = median([v, b, c]);
+    if (best == null || m < best) best = m;
+  }
+  return { rest: vals.size >= MIN_WINDOWS && best != null ? Math.round(best) : null, windows: vals.size };
+}
+
+// Pro Tag (Ortszeit) Ruhepuls + Anzahl; Messwerte auf höchstens einen pro Minute verdichten (Trainings messen sekündlich)
+export function heartRows(userId: string, samples: { t: number; bpm: number }[], fromDay: string, tz = 'Europe/Berlin') {
+  const byDay = new Map<string, { t: number; bpm: number }[]>();
+  const perMinute = new Map<number, { t: number; bpm: number }>();
+  for (const s of samples) {
+    const day = localDay(s.t, tz);
+    if (day < fromDay) continue;
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day)!.push(s);
+    const m = Math.floor(s.t / 60);
+    if (!perMinute.has(m)) perMinute.set(m, s);
+  }
+  const days = [...byDay.entries()].map(([day, list]) => {
+    const r = restFromSamples(list);
+    return { user_id: userId, day, rest_hr: r.rest, samples: r.windows, updated_at: new Date().toISOString() };
+  });
+  const rows = [...perMinute.values()].filter((s) => localDay(s.t, tz) >= fromDay)
+    .map((s) => ({ user_id: userId, at: new Date(s.t * 1000).toISOString(), bpm: Math.round(s.bpm) }));
+  return { days, rows };
 }
 
 // Fehlt eine Spalte (Datenbank-Update noch nicht ausgeführt)?
@@ -291,9 +363,33 @@ export async function handle(req: Request, deps: { fetch?: typeof fetch; db?: an
         sleepError = missingColumn(e) ? 'Datenbank-Update 010 fehlt' : String(e?.message || e);
       }
 
+      // Puls über den Tag: beim ersten Mal 90 Tage rückwirkend, sonst ab Abgleich-Start
+      let heartDays = 0;
+      let heartError: string | null = null;
+      try {
+        const { count, error: hcErr } = await db.from('daily_heart').select('day', { count: 'exact', head: true }).eq('user_id', userId);
+        if (hcErr) throw hcErr;
+        const heartFrom = count ? startDay : ymd(new Date(now.getTime() - 90 * 86400000));
+        const fromUnix = Math.floor(Date.parse(heartFrom + 'T00:00:00Z') / 1000) - 2 * 3600; // Mitternacht in Berlin liegt vor 0 Uhr UTC
+        const samples = await fetchHeart(accessToken, fromUnix, Math.floor(now.getTime() / 1000), fetcher);
+        const { days: hDays, rows } = heartRows(userId, samples, heartFrom);
+        for (let i = 0; i < rows.length; i += 1000) {
+          const { error: e4 } = await db.from('heart_samples').upsert(rows.slice(i, i + 1000), { onConflict: 'user_id,at' });
+          if (e4) throw e4;
+        }
+        if (hDays.length) {
+          const { error: e5 } = await db.from('daily_heart').upsert(hDays, { onConflict: 'user_id,day' });
+          if (e5) throw e5;
+        }
+        heartDays = hDays.filter((d) => d.rest_hr != null).length;
+      } catch (e: any) {
+        console.error(e);
+        heartError = missingColumn(e) ? 'Datenbank-Update 011 fehlt' : String(e?.message || e);
+      }
+
       const lastSync = new Date().toISOString();
       await db.from('withings_tokens').update({ last_sync_at: lastSync }).eq('user_id', userId);
-      return json({ connected: true, last_sync_at: lastSync, from: startDay, activity_from: activityStart, activity_days: actRows.length, workouts: woRows.length, sleep_nights: sleepNights, sleep_error: sleepError });
+      return json({ connected: true, last_sync_at: lastSync, from: startDay, activity_from: activityStart, activity_days: actRows.length, workouts: woRows.length, sleep_nights: sleepNights, sleep_error: sleepError, heart_days: heartDays, heart_error: heartError });
     }
 
     return json({ error: 'Unbekannte Aktion' }, 400);

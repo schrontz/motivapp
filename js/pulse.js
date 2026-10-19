@@ -1,7 +1,8 @@
 // Puls von Withings – als Trend, kein Urteil. Reine Funktionen, getestet.
 // Ruhepuls-Quelle:
-//   „sleep“ = Ø Puls im Schlaf (wenn die Uhr nachts getragen wird) – am saubersten
-//   „day“   = niedrigster Puls des Tages, solange die Uhr getragen wird (z. B. beim Sitzen) – Jans Fall
+//   „sleep“ = Ø Puls im Schlaf (wenn die Uhr nachts getragen wird)
+//   „day“   = ruhigste halbe Stunde des Tages (rechnet die Server-Funktion aus den Werten alle ~10 Min) – Jans Fall.
+//            Nicht das Tagesminimum: das ist oft eine einzelne Fehlmessung (Uhr verrutscht → 38 bpm).
 // Schlaf, Stress, Infekte, Koffein und Rauchen bewegen beides.
 
 import { addDays } from './dates.js';
@@ -11,12 +12,12 @@ const valid = (v) => Number(v) > 25 && Number(v) < 200;
 
 // Welche Quelle? Schlaf, wenn es in den letzten 30 Tagen genug Nächte gibt – sonst Tageswerte.
 // Tageswerte nur von abgeschlossenen Tagen (heute kann der Wert noch fallen).
-export function restValues(sleep, activity, T) {
+export function restValues(sleep, heart, T) {
   const nights = (sleep || []).filter((n) => n && n.day && valid(n.hr_avg))
     .map((n) => ({ day: n.day, v: Number(n.hr_avg) })).sort((a, b) => (a.day < b.day ? -1 : 1));
   if (nights.filter((n) => n.day >= addDays(T, -30)).length >= 5) return { kind: 'sleep', vals: nights };
-  const days = (activity || []).filter((a) => a && a.day && a.day < T && valid(a.hr_min))
-    .map((a) => ({ day: a.day, v: Number(a.hr_min) })).sort((a, b) => (a.day < b.day ? -1 : 1));
+  const days = (heart || []).filter((a) => a && a.day && a.day < T && valid(a.rest_hr))
+    .map((a) => ({ day: a.day, v: Number(a.rest_hr) })).sort((a, b) => (a.day < b.day ? -1 : 1));
   if (days.length) return { kind: 'day', vals: days };
   if (nights.length) return { kind: 'sleep', vals: nights };
   return null;
@@ -51,5 +52,5 @@ export function restCompare(vals, startedOn, T) {
 // Texte je nach Quelle
 export const REST_TEXT = {
   sleep: { what: 'Ø im Schlaf', recent: 'letzte 7 Nächte', hint: 'Ø Puls im Schlaf, von deiner Withings-Uhr.' },
-  day: { what: 'niedrigster am Tag', recent: 'letzte 7 Tage', hint: 'Niedrigster Puls des Tages, solange du die Uhr trägst – meist beim ruhigen Sitzen.' }
+  day: { what: 'ruhigste halbe Stunde', recent: 'letzte 7 Tage', hint: 'Dein Puls in der ruhigsten halben Stunde des Tages, gemessen von der Uhr.' }
 };

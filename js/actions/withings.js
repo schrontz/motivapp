@@ -42,7 +42,7 @@ export async function syncWithings({ manual = false } = {}) {
       fresh.dismissals = [...fresh.dismissals, ...S.dismissals.filter((d) => !keys.has(`${d.habit_id}|${d.day}`))];
       fresh.withings = { ...fresh.withings, last_sync_at: res.last_sync_at };
       Object.assign(S, fresh);
-      if (manual) toast(res.sleep_error ? `Withings abgeglichen – nur der Puls fehlt noch (${res.sleep_error}).` : 'Withings abgeglichen');
+      if (manual) toast(res.heart_error ? `Withings abgeglichen – nur der Puls fehlt noch (${res.heart_error}).` : 'Withings abgeglichen');
     }
   } catch (err) {
     console.error(err);
