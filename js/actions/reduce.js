@@ -1,7 +1,7 @@
 // Aktionen: „Weniger rauchen“ – starten, zählen (mit Rückgängig), Abstand anpassen, Einstellungen.
 
 import * as db from '../db.js';
-import { S, render, persist, toast, go } from '../core.js';
+import { S, local, render, persist, toast, go } from '../core.js';
 import { DEFAULT_COSTS, newEvent } from '../reduce.js';
 
 const KIND = 'rauchen';
@@ -90,6 +90,14 @@ export const clicks = {
   'reduce-smoke': smoke,
   'reduce-undo': undo,
   'reduce-adjust': adjust
+};
+
+export const changes = {
+  'reduce-cost-basis': ({ el }) => {
+    S.reduceCostBasis = el.value === 'start' ? 'start' : 'recent';
+    local.set('reduceCostBasis', S.reduceCostBasis);
+    render();
+  }
 };
 
 export const submits = {

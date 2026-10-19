@@ -1,7 +1,8 @@
 // „Weniger rauchen“: Karte auf der Übersicht, Bereich (erste Woche / Abstand), Einrichten.
 // Grün statt Rot, keine Vorwürfe: Früher geraucht wird einfach gezählt.
 
-import { phase, baseline, currentInterval, timer, savings, recentAvg, countsByDay, costPerUnit, DEFAULT_COSTS, WATCH_DAYS, hm } from '../reduce.js';
+import { phase, baseline, currentInterval, timer, savings, recentAvg, countsByDay, costPerUnit, costStats, planProjection, DEFAULT_COSTS, WATCH_DAYS, hm } from '../reduce.js';
+import { restValues, restCompare, REST_TEXT } from '../pulse.js';
 import { addDays, parseDay } from '../dates.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
 
@@ -23,6 +24,11 @@ function agoTxt(min) {
   return `vor ${h} Std${m ? ` ${m} Min` : ''}`;
 }
 
+function pulseOf(S, settings, T) {
+  const rest = S.hasPulseSchema && restValues(S.sleep, S.activity, T);
+  return rest ? { kind: rest.kind, ...restCompare(rest.vals, settings.started_on, T) } : null;
+}
+
 // Alles, was die Bildschirme brauchen, an einer Stelle
 export function reduceState(S, T, now = new Date()) {
   const settings = (S.reduceSettings || []).find((r) => r.kind === KIND) || null;
@@ -38,7 +44,10 @@ export function reduceState(S, T, now = new Date()) {
     settings, events, ph, base, iv, tm, cost, counts,
     today: counts.get(T) || 0,
     saved: savings(events, base, settings, T, cost.total),
-    avg7: recentAvg(events, T, 7, settings.started_on)
+    avg7: recentAvg(events, T, 7, settings.started_on),
+    spend: costStats(events, settings, T, cost.total, S.reduceCostBasis),
+    plan: planProjection(base, settings, T, cost.total),
+    pulse: pulseOf(S, settings, T)
   };
 }
 
@@ -101,6 +110,80 @@ function smokeIcon() {
 }
 
 // ───────────── Bereich ─────────────
+
+// Was das Rauchen kostet – neutral, ohne Rot. Die Hochrechnung schrumpft, wenn du weniger rauchst.
+function costCard(S, st, watch) {
+  const c = st.spend;
+  if (!c) return '';
+  const basis = watch ? 'start' : S.reduceCostBasis;
+  const seg = watch ? '' : `<div class="seg small-seg" role="radiogroup" aria-label="Hochrechnen mit">
+      ${[['recent', 'letzte 7 Tage'], ['start', 'seit Start']].map(([id, label]) => `<label><input type="radio" name="rcost" value="${id}"${basis === id ? ' checked' : ''} data-action="reduce-cost-basis"><span>${label}</span></label>`).join('')}
+    </div>`;
+  const n = (v) => numTxt(v, v % 1 ? 1 : 0);
+  const note = c.rate == null
+    ? 'Ab morgen steht hier, was das im Monat und im Jahr ausmacht.'
+    : `Hochgerechnet mit deinem Schnitt ${basis === 'start' ? 'seit Start' : 'der letzten 7 Tage'} (${n(c.rate)} am Tag).${watch ? '' : ' Rauchst du weniger, schrumpfen Monat und Jahr mit.'}`;
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="font-size: 17px">Was das Rauchen kostet</h2>
+    ${seg}
+    <div class="stat3 inner">
+      <div><div class="small muted">am Tag</div><b>${c.perDay == null ? '–' : euro(c.perDay)}</b></div>
+      <div><div class="small muted">im Monat</div><b>${c.perMonth == null ? '–' : `≈ ${numTxt(c.perMonth, 0)} €`}</b></div>
+      <div><div class="small muted">im Jahr</div><b>${c.perYear == null ? '–' : `≈ ${numTxt(c.perYear, 0)} €`}</b></div>
+    </div>
+    ${planChart(st, watch)}
+    <div class="reduce-spent"><span class="muted">ausgegeben seit ${shortDate(st.settings.started_on)}</span><b>${euro(c.spent.euro)} · ${c.spent.units} Stück</b></div>
+    <p class="small muted" style="line-height: 1.45">${note}</p>
+  </section>`;
+}
+
+// Kurve: Monatskosten in den nächsten 12 Monaten, wenn der Abstand nach Plan wächst
+function planChart(st, watch) {
+  const p = st.plan;
+  if (watch) return '<p class="small muted reduce-plan" style="line-height: 1.45">Nach der ersten Woche siehst du hier, wie die Kosten sinken, wenn der Abstand wächst.</p>';
+  if (!p || !st.settings.step_min) return '';
+  const W = 300; const H = 96;
+  const now = !watch && st.spend.rate != null ? Math.round(st.spend.rate * st.cost.total * 30.4) : null;
+  const hi = Math.max(p[0].euro, now || 0, 1); const lo = 0;
+  const x = (m) => 6 + (m / 12) * (W - 12);
+  const y = (v) => 8 + (1 - (v - lo) / (hi - lo)) * (H - 16);
+  const line = p.map((q) => `${x(q.m).toFixed(1)},${y(q.euro).toFixed(1)}`).join(' ');
+  const area = `${x(0).toFixed(1)},${y(0).toFixed(1)} ${line} ${x(12).toFixed(1)},${y(0).toFixed(1)}`;
+  const end = p[12];
+  const iv = end.interval ? ` (Abstand dann ${end.interval >= 120 ? `${numTxt(Math.round(end.interval / 6) / 10, 1)} Std` : `${end.interval} Min`})` : '';
+  return `<div class="reduce-plan">
+    <div class="small" style="font-weight: 600">Wenn der Abstand weiter wächst</div>
+    <div class="hr-chart" style="grid-template-columns: 40px minmax(0, 1fr)">
+      <div class="hr-y small muted" style="height: ${H}px" aria-hidden="true"><span style="top: ${((y(p[0].euro) / H) * 100).toFixed(1)}%">${numTxt(p[0].euro, 0)} €</span><span style="top: ${((y(end.euro) / H) * 100).toFixed(1)}%">${numTxt(end.euro, 0)} €</span></div>
+      <svg viewBox="0 0 ${W} ${H}" style="height: ${H}px" role="img" aria-label="Kosten pro Monat nach Plan: jetzt etwa ${p[0].euro} Euro, in einem Jahr etwa ${end.euro} Euro">
+        <line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" style="stroke: var(--border)"></line>
+        <polygon points="${area}" style="fill: var(--k-teal)" opacity="0.7"></polygon>
+        <polyline points="${line}" fill="none" style="stroke: var(--c-teal)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        ${now != null ? `<circle cx="${x(0).toFixed(1)}" cy="${y(now).toFixed(1)}" r="4.5" style="fill: var(--surface); stroke: var(--text)" stroke-width="2"><title>tatsächlich gerade ≈ ${now} € im Monat</title></circle>` : ''}
+      </svg>
+    </div>
+    <div class="small muted" style="display: flex; justify-content: space-between; padding-left: 46px"><span>jetzt</span><span>in 6 Mon.</span><span>in 1 Jahr</span></div>
+    <p class="small muted" style="line-height: 1.45">Ein Monat kostet nach Plan in einem Jahr noch ≈ ${numTxt(end.euro, 0)} € statt ≈ ${numTxt(p[0].euro, 0)} €${iv}.${now != null ? ' Der Kreis zeigt, wo du gerade wirklich stehst.' : ''} Ein Plan, keine Frist – bleibst du länger beim selben Abstand, wird die Kurve einfach flacher.</p>
+  </div>`;
+}
+
+// Ruhepuls vorher / jetzt (Withings) – nur wenn Nächte da sind
+function pulseCard(st) {
+  const p = st.pulse;
+  if (!p || (!p.before && !p.recent)) return '';
+  const v = (a) => (a ? `${numTxt(Math.round(a.v), 0)} <span style="font-size: 13px; font-weight: 500">bpm</span>` : '–');
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <h2 style="font-size: 17px; display: flex; align-items: center; gap: 6px"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="fill: var(--c-pink)"><path d="M12 21s-7.5-4.6-9.5-9.3C1 8 3.4 4.5 7 4.5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 6 3.5 4.5 7.2C19.5 16.4 12 21 12 21z"></path></svg>Ruhepuls</h2>
+      <a class="link-btn" href="#/body" style="text-decoration: none">Verlauf ›</a>
+    </div>
+    <div class="grid2 inner">
+      <div><div class="small muted">Woche vor dem Start</div><b>${v(p.before)}</b></div>
+      <div><div class="small muted">${REST_TEXT[p.kind].recent}</div><b>${v(p.recent)}</b></div>
+    </div>
+    <p class="small muted" style="line-height: 1.45">${REST_TEXT[p.kind].hint} Er schwankt mit Schlaf, Stress und Infekten – erst über Wochen sieht man, was das Rauchen ausmacht.</p>
+  </section>`;
+}
 
 function bars(days, counts, T, ref) {
   const max = Math.max(ref || 0, ...days.map((d) => counts.get(d) || 0), 1);
@@ -170,8 +253,10 @@ export function reduceView(S, T) {
       <section class="stat3">
         <div class="card"><div class="small muted">Ø am Tag</div><b>${perDay == null ? '–' : numTxt(perDay, perDay % 1 ? 1 : 0)}</b></div>
         <div class="card"><div class="small muted">Ø Abstand</div><b>${st.base.gap ? `${st.base.gap}′` : '–'}</b></div>
-        <div class="card"><div class="small muted">am Tag</div><b>${perDay == null ? '–' : euro(perDay * st.cost.total)}</b></div>
+        <div class="card"><div class="small muted">seit Start</div><b>${st.spend.spent.units}</b></div>
       </section>
+      ${costCard(S, st, true)}
+      ${pulseCard(st)}
       <p class="hint" style="padding: 0 4px">Abstand zwischen ${esc(st.settings.night_to)} und ${esc(st.settings.night_from)} Uhr, die Nacht zählt nicht. Kosten: etwa ${cents(st.cost.total)} pro Zigarette (${numTxt((st.settings.costs || {}).g_per_unit || DEFAULT_COSTS.g_per_unit, 2)} g – nachwiegen unter „Einrichten“).</p>
     </div>${nav('overview')}</div>`;
   }
@@ -195,6 +280,8 @@ export function reduceView(S, T) {
       <div class="reduce-euro">${euro(st.saved.euro)}</div>
       <p>${st.saved.units ? `${numTxt(st.saved.units, st.saved.units % 1 ? 1 : 0)} Zigaretten weniger als am Anfang.` : 'Jeder Tag unter deinem Ausgangswert zählt hier.'} Diese Zahl wächst nur – ein Tag mit mehr nimmt nichts weg.</p>
     </section>
+    ${costCard(S, st, false)}
+    ${pulseCard(st)}
     <section class="card pad">
       <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">Letzte 14 Tage</h2><span class="small muted">Linie = am Anfang (${numTxt(st.base.perDay, st.base.perDay % 1 ? 1 : 0)})</span></div>
       ${bars(days, st.counts, T, st.base.perDay)}

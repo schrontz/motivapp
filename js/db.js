@@ -3,7 +3,7 @@
 // - Demo (?demo in der Adresse): Beispieldaten im Speicher, nichts wird gespeichert.
 
 import { SUPABASE_URL, SUPABASE_KEY, SUPABASE_JS } from './config.js';
-import { today, addDays, toDay, weekStart } from './dates.js';
+import { today, addDays, diffDays, toDay, weekStart } from './dates.js';
 
 export const isDemo = new URLSearchParams(location.search).has('demo');
 
@@ -59,7 +59,7 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true };
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true };
   const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
@@ -245,8 +245,8 @@ export async function deletePlan(id) {
 // Withings-Daten. Fehlt das Datenbank-Update 003 noch, läuft die App ohne Withings weiter.
 export async function loadWithingsData() {
   if (isDemo) {
-    const { activity, workouts, dismissals, withings } = structuredClone(demo);
-    return { activity, workouts, dismissals, withings, hasWithingsSchema: true };
+    const { activity, workouts, dismissals, withings, sleep } = structuredClone(demo);
+    return { activity, workouts, dismissals, withings, sleep, hasWithingsSchema: true, hasPulseSchema: true };
   }
   try {
     const since = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
@@ -257,13 +257,25 @@ export async function loadWithingsData() {
       fetchAll('auto_dismissals', 'day')
     ]);
     const s = status && status[0];
+    const pulse = await loadSleep(since);
     return {
-      activity, workouts, dismissals, hasWithingsSchema: true,
+      activity, workouts, dismissals, hasWithingsSchema: true, ...pulse,
       withings: s ? { connected: true, last_sync_at: s.last_sync_at, connected_at: s.connected_at } : { connected: false }
     };
   } catch (err) {
     console.warn('Withings-Daten nicht verfügbar (Datenbank-Update 003 schon ausgeführt?)', err);
-    return { activity: [], workouts: [], dismissals: [], withings: { connected: false }, hasWithingsSchema: false };
+    return { activity: [], workouts: [], dismissals: [], withings: { connected: false }, hasWithingsSchema: false, sleep: [], hasPulseSchema: false };
+  }
+}
+
+// Schlaf + Ruhepuls (Update 010). Fehlt es noch, läuft alles andere weiter.
+async function loadSleep(since) {
+  try {
+    const sleep = await client.from('sleep_summary').select('day, hr_avg, hr_min, hr_max, sleep_min').gte('day', since).order('day').then(check);
+    return { sleep: sleep || [], hasPulseSchema: true };
+  } catch (err) {
+    console.warn('Puls nicht verfügbar (Datenbank-Update 010 schon ausgeführt?)', err);
+    return { sleep: [], hasPulseSchema: false };
   }
 }
 
@@ -474,8 +486,19 @@ const demo = (() => {
     body.push({ id: 'b' + i, ext_id: 'renpho:' + d, source: 'renpho', day: d, measured_at: new Date(d + 'T07:05:00').toISOString(), weight: w,
       vals: { weight: w, bmi: Math.round((w / 1.75 / 1.75) * 10) / 10, fat_pct: fat, fat_kg: Math.round(w * fat) / 100, muscle_kg: muscle, muscle_pct: Math.round((muscle / w) * 1000) / 10, skeletal_kg: Math.round(muscle * 0.68 * 100) / 100, lean_kg: Math.round((w - (w * fat) / 100) * 100) / 100, subcut_pct: Math.round((fat - 3.2) * 10) / 10, visceral: fat > 26.5 ? 10 : 9, bmr: Math.round(1600 + muscle * 0.9 - 50), body_age: 37, water_pct: 53.2 } });
   }
+  // Puls wie bei Jan: Uhr nur tagsüber → niedrigster Wert des Tages um 60, seit „Weniger rauchen“ etwas niedriger
+  let s2 = 11;
+  const rnd2 = () => { s2 = (s2 * 9301 + 49297) % 233280; return s2 / 233280; };
+  for (const a of activity) {
+    const i = diffDays(a.day, t);
+    const after = i < 20 ? (20 - i) / 20 : 0;
+    a.hr_min = Math.round(60 + Math.sin(i / 5) * 1.2 + (rnd2() - 0.5) * 5 - after * 2.5);
+    a.hr_avg = a.hr_min + 18 + Math.round(rnd2() * 6);
+    a.hr_max = 130 + Math.round(rnd2() * 30);
+  }
+  const sleep = [];
   return {
-    body,
+    body, sleep,
     profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body', 'weniger'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,

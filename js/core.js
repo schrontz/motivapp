@@ -39,6 +39,9 @@ export const S = {
   reduceEvents: [],
   hasReduceSchema: false,
   reduceUndo: null,
+  reduceCostBasis: 'recent',
+  sleep: [],
+  hasPulseSchema: false,
   cityInfo: null,
   travelQuery: '',
   travelResults: null,
@@ -71,6 +74,7 @@ S.trainRange = Number(local.get('trainRange') || 30);
 S.bodyRange = local.get('bodyRange') || '3m';
 S.distRange = local.get('distRange') || 'all';
 S.distStart = local.get('distStart') || 'Frankfurt am Main';
+S.reduceCostBasis = local.get('reduceCostBasis') === 'start' ? 'start' : 'recent';
 S.standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 // „Passt so“ beim Muster-Hinweis: erst wieder zeigen, wenn das Muster 4 weitere Zeiträume anhält
 S.hintSeen = (id, count) => {

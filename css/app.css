@@ -441,3 +441,13 @@ button.dest-row:first-child { border-top: 0; }
 .reduce-cost { background: var(--k-teal); border-radius: 14px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .reduce-cost b { font-size: 20px; color: var(--c-teal); }
 .reduce-check { width: 26px; height: 26px; accent-color: var(--c-teal); flex: none; }
+
+/* Was das Rauchen kostet · Ruhepuls */
+.seg.small-seg { padding: 3px; border-radius: 13px; gap: 3px; }
+.seg.small-seg span { height: 34px; font-size: 13px; border-radius: 10px; }
+.stat3.inner > div, .grid2.inner > div { background: var(--bg); border-radius: 14px; padding: 10px; min-width: 0; }
+.stat3.inner b { font-size: 19px; }
+.grid2.inner { gap: 8px; }
+.grid2.inner b { display: block; font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.reduce-spent { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.reduce-plan { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }

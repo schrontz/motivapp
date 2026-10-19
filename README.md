@@ -14,7 +14,7 @@ Live: https://schrontz.github.io/motivapp/ · Demo ohne Login: https://schrontz.
 ## Datenbank-Updates
 
 Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede einmal, Wiederholen schadet nicht):
-`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql` → `006_reise.sql` → `007_orte.sql` → `008_etappen.sql` → `009_weniger.sql`
+`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql` → `006_reise.sql` → `007_orte.sql` → `008_etappen.sql` → `009_weniger.sql` → `010_puls.sql` (danach die Server-Funktion `withings` neu einspielen)
 
 ## Withings verbinden (einmalig)
 
@@ -48,7 +48,8 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 | `js/strength.js` | Alpha-CSV, Zusammenführen, Steigerung, 1RM – getestet |
 | `js/body.js` | Renpho-CSV, Verlauf mit 2-Wochen-Schnitt – getestet |
 | `js/distance.js` | Strecke, Luftlinie, Reiseziele, Etappen, Vorschläge, Ortssuche, Stadt-Wissen (Wikipedia) – getestet |
-| `js/reduce.js` | Weniger rauchen: Kosten, Ausgangswoche, Abstand mit Nachtruhe, Gespartes – getestet |
+| `js/reduce.js` | Weniger rauchen: Kosten (ausgegeben, hochgerechnet, Plan-Kurve), Ausgangswoche, Abstand mit Nachtruhe, Gespartes – getestet |
+| `js/pulse.js` | Ruhepuls aus Withings: Schlaf-Ø oder niedrigster Tageswert, Verlauf, vorher/jetzt – getestet |
 | `js/map.js` | Karte (Leaflet + OpenStreetMap, lädt erst auf der Strecken-Seite) |
 | `js/dates.js` | Datums-Hilfen |
 | `js/db.js` | Supabase-Zugriff + Demo-Daten (`?demo`) |

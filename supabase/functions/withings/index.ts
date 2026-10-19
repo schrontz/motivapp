@@ -3,7 +3,7 @@
 //
 // Aktionen (POST, JSON):
 //   { action: 'connect', code, redirect_uri }  → Code gegen Tokens tauschen (direkt nach dem Withings-Login)
-//   { action: 'sync', days? }                  → Schritte + Trainings abholen und speichern
+//   { action: 'sync', days? }                  → Schritte, Trainings, Puls und Schlaf abholen und speichern
 //   { action: 'disconnect' }                   → Verbindung trennen (Tokens löschen, Daten bleiben)
 //
 // Benötigte Secrets (Supabase → Edge Functions → Secrets):
@@ -73,8 +73,36 @@ export function mapActivity(userId: string, a: any) {
     distance_m: a.distance != null ? Number(a.distance) : null,
     active_minutes: Math.round(activeSec / 60),
     calories: a.calories != null ? Number(a.calories) : null,
+    hr_avg: a.hr_average != null ? Math.round(a.hr_average) : null,
+    hr_min: a.hr_min != null ? Math.round(a.hr_min) : null,
+    hr_max: a.hr_max != null ? Math.round(a.hr_max) : null,
     updated_at: new Date().toISOString()
   };
+}
+
+// Schlaf: pro Tag nur die längste Schlafphase (Nickerchen zählen nicht als Ruhepuls)
+export function mapSleep(userId: string, series: any[]) {
+  const best = new Map<string, any>();
+  for (const s of series || []) {
+    if (!s || !s.date) continue;
+    const len = (Number(s.enddate) || 0) - (Number(s.startdate) || 0);
+    const cur = best.get(s.date);
+    if (!cur || len > cur.len) best.set(s.date, { s, len });
+  }
+  return [...best.values()].map(({ s }) => {
+    const d = s.data || {};
+    const r = (v: any) => (v != null && Number(v) > 0 ? Math.round(Number(v)) : null);
+    return {
+      user_id: userId,
+      day: s.date,
+      hr_avg: r(d.hr_average),
+      hr_min: r(d.hr_min),
+      hr_max: r(d.hr_max),
+      sleep_min: d.total_sleep_time != null ? Math.round(Number(d.total_sleep_time) / 60) : null,
+      data: d,
+      updated_at: new Date().toISOString()
+    };
+  });
 }
 
 export function mapWorkout(userId: string, s: any) {
@@ -98,11 +126,11 @@ export function mapWorkout(userId: string, s: any) {
 }
 
 // Alle Seiten einer Withings-Liste abholen (more/offset)
-async function fetchPaged(action: string, params: Record<string, string>, key: string, token: string, fetcher: typeof fetch) {
+async function fetchPaged(action: string, params: Record<string, string>, key: string, token: string, fetcher: typeof fetch, path = '/v2/measure') {
   const out: any[] = [];
   let offset = 0;
   for (let i = 0; i < 20; i += 1) {
-    const body = await withingsPost('/v2/measure', { action, ...params, ...(offset ? { offset: String(offset) } : {}) }, token, fetcher);
+    const body = await withingsPost(path, { action, ...params, ...(offset ? { offset: String(offset) } : {}) }, token, fetcher);
     out.push(...(body[key] || []));
     if (!body.more) break;
     offset = body.offset;
@@ -110,10 +138,10 @@ async function fetchPaged(action: string, params: Record<string, string>, key: s
   return out;
 }
 
-export async function fetchWithingsData(token: string, startDay: string, endDay: string, fetcher: typeof fetch = fetch) {
+export async function fetchWithingsData(token: string, startDay: string, endDay: string, fetcher: typeof fetch = fetch, activityStart = startDay) {
   const activities = await fetchPaged('getactivity', {
-    startdateymd: startDay, enddateymd: endDay,
-    data_fields: 'steps,distance,soft,moderate,intense,active,calories'
+    startdateymd: activityStart, enddateymd: endDay,
+    data_fields: 'steps,distance,soft,moderate,intense,active,calories,hr_average,hr_min,hr_max'
   }, 'activities', token, fetcher);
   const series = await fetchPaged('getworkouts', {
     startdateymd: startDay, enddateymd: endDay,
@@ -121,6 +149,16 @@ export async function fetchWithingsData(token: string, startDay: string, endDay:
   }, 'series', token, fetcher);
   return { activities, series };
 }
+
+export async function fetchSleep(token: string, startDay: string, endDay: string, fetcher: typeof fetch = fetch) {
+  return fetchPaged('getsummary', {
+    startdateymd: startDay, enddateymd: endDay,
+    data_fields: 'hr_average,hr_min,hr_max,total_sleep_time'
+  }, 'series', token, fetcher, '/v2/sleep');
+}
+
+// Fehlt eine Spalte (Datenbank-Update noch nicht ausgeführt)?
+const missingColumn = (e: any) => /column|schema cache|does not exist|relation/i.test(String(e?.message || e));
 
 async function tokenRequest(params: Record<string, string>, fetcher: typeof fetch = fetch) {
   const clientId = Deno.env.get('WITHINGS_CLIENT_ID');
@@ -201,7 +239,7 @@ export async function handle(req: Request, deps: { fetch?: typeof fetch; db?: an
       }
 
       // Zeitraum: erstes Mal 30 Tage, danach ab 3 Tage vor dem letzten Abgleich (Nachträge der Uhr)
-      const days = Math.min(Math.max(Number(payload.days) || 0, 0), 90);
+      const days = Math.min(Math.max(Number(payload.days) || 0, 0), 400);
       const now = new Date();
       let start;
       if (days) start = new Date(now.getTime() - days * 86400000);
@@ -210,20 +248,52 @@ export async function handle(req: Request, deps: { fetch?: typeof fetch; db?: an
       const startDay = ymd(start);
       const endDay = ymd(new Date(now.getTime() + 86400000));
 
-      const { activities, series } = await fetchWithingsData(accessToken, startDay, endDay, fetcher);
+      // Puls pro Tag gibt es erst seit Update 010: beim ersten Mal die Tage ein Jahr rückwirkend neu holen
+      let activityStart = startDay;
+      try {
+        const { count, error: hErr } = await db.from('daily_activity').select('day', { count: 'exact', head: true }).eq('user_id', userId).not('hr_min', 'is', null);
+        if (!hErr && !count) activityStart = ymd(new Date(now.getTime() - 365 * 86400000));
+      } catch (_) { /* Spalte fehlt noch – dann eben ohne */ }
+      if (activityStart > startDay) activityStart = startDay;
+
+      const { activities, series } = await fetchWithingsData(accessToken, startDay, endDay, fetcher, activityStart);
       const actRows = activities.filter((a: any) => a.date).map((a: any) => mapActivity(userId, a));
       const woRows = series.filter((s: any) => s.startdate && s.enddate).map((s: any) => mapWorkout(userId, s));
       if (actRows.length) {
-        const { error: e1 } = await db.from('daily_activity').upsert(actRows, { onConflict: 'user_id,day' });
+        let { error: e1 } = await db.from('daily_activity').upsert(actRows, { onConflict: 'user_id,day' });
+        if (e1 && missingColumn(e1)) {
+          // Update 010 fehlt noch: ohne Puls speichern, damit Schritte weiter ankommen
+          const plain = actRows.map(({ hr_avg, hr_min, hr_max, ...rest }: any) => rest);
+          ({ error: e1 } = await db.from('daily_activity').upsert(plain, { onConflict: 'user_id,day' }));
+        }
         if (e1) throw e1;
       }
       if (woRows.length) {
         const { error: e2 } = await db.from('workouts').upsert(woRows, { onConflict: 'user_id,ext_id' });
         if (e2) throw e2;
       }
+      // Schlaf + Ruhepuls: Fehler hier sollen den Abgleich nicht kaputt machen.
+      // Beim ersten Mal (noch keine Nächte gespeichert) ein Jahr rückwirkend holen.
+      let sleepNights = 0;
+      let sleepError: string | null = null;
+      try {
+        const { count, error: cErr } = await db.from('sleep_summary').select('day', { count: 'exact', head: true }).eq('user_id', userId);
+        if (cErr) throw cErr;
+        const sleepStart = count ? startDay : ymd(new Date(now.getTime() - 365 * 86400000));
+        const sleepRows = mapSleep(userId, await fetchSleep(accessToken, sleepStart, endDay, fetcher));
+        if (sleepRows.length) {
+          const { error: e3 } = await db.from('sleep_summary').upsert(sleepRows, { onConflict: 'user_id,day' });
+          if (e3) throw e3;
+        }
+        sleepNights = sleepRows.length;
+      } catch (e: any) {
+        console.error(e);
+        sleepError = missingColumn(e) ? 'Datenbank-Update 010 fehlt' : String(e?.message || e);
+      }
+
       const lastSync = new Date().toISOString();
       await db.from('withings_tokens').update({ last_sync_at: lastSync }).eq('user_id', userId);
-      return json({ connected: true, last_sync_at: lastSync, from: startDay, activity_days: actRows.length, workouts: woRows.length });
+      return json({ connected: true, last_sync_at: lastSync, from: startDay, activity_from: activityStart, activity_days: actRows.length, workouts: woRows.length, sleep_nights: sleepNights, sleep_error: sleepError });
     }
 
     return json({ error: 'Unbekannte Aktion' }, 400);

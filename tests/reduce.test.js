@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { costPerUnit, isNight, awakeMinutes, phase, baseline, currentInterval, timer, savings, recentAvg, countsByDay } from '../js/reduce.js';
+import { costPerUnit, isNight, awakeMinutes, phase, baseline, currentInterval, timer, savings, recentAvg, countsByDay, costStats, planProjection } from '../js/reduce.js';
 
 const S0 = { started_on: '2026-10-01', night_from: '23:00', night_to: '07:00', step_min: 5, adjust_min: 0 };
 const ev = (day, time) => ({ day, at: new Date(`${day}T${time}:00`).toISOString() });
@@ -62,4 +62,55 @@ test('Timer und Gespartes (wächst nur)', () => {
   assert.deepEqual(savings(ev2, b, S0, '2026-10-05', 0.17), { units: 0, euro: 0 }, 'erste Woche: noch nichts gespart');
   assert.equal(countsByDay(ev2).get('2026-10-09'), 14);
   assert.equal(recentAvg(ev2, '2026-10-11', 3), 9.3);
+});
+
+test('Kosten: ausgegeben seit Start und hochgerechnet', () => {
+  // Start 1.10., heute 4.10.: 10, 12, 8 abgeschlossen + heute 3
+  const events = [];
+  [['2026-10-01', 10], ['2026-10-02', 12], ['2026-10-03', 8], ['2026-10-04', 3]].forEach(([d, n]) => { for (let i = 0; i < n; i += 1) events.push(ev(d, '10:00')); });
+  events.push(ev('2026-09-30', '10:00')); // vor dem Start: zählt nicht
+  const c = costStats(events, S0, '2026-10-04', 0.2, 'start');
+  assert.equal(c.spent.units, 33);
+  assert.equal(c.spent.euro, 6.6);
+  assert.equal(c.days, 3);
+  assert.equal(c.rate, 10);
+  assert.equal(c.perDay, 2);
+  assert.equal(c.perMonth, 61);
+  assert.equal(c.perYear, 730);
+  // Am ersten Tag: noch kein Schnitt
+  const first = costStats(events, S0, '2026-10-01', 0.2);
+  assert.equal(first.rate, null);
+  assert.equal(first.perYear, null);
+  assert.equal(first.spent.units, 10);
+});
+
+test('Kosten: Basis letzte 7 Tage folgt dem Weniger', () => {
+  const s = { ...S0, started_on: '2026-09-01' };
+  const events = [];
+  for (let d = '2026-09-01'; d < '2026-10-10'; d = new Date(new Date(d + 'T12:00').getTime() + 86400000).toISOString().slice(0, 10)) {
+    const n = d < '2026-10-03' ? 14 : 7;
+    for (let i = 0; i < n; i += 1) events.push(ev(d, '10:00'));
+  }
+  const recent = costStats(events, s, '2026-10-10', 0.2, 'recent');
+  const start = costStats(events, s, '2026-10-10', 0.2, 'start');
+  assert.equal(recent.rate, 7);
+  assert.ok(start.rate > 12);
+  assert.ok(recent.perYear < start.perYear);
+});
+
+test('Plan-Kurve: Kosten sinken mit wachsendem Abstand, nie über dem Ausgangswert', () => {
+  const base = { perDay: 13, gap: 74 };
+  const p = planProjection(base, S0, '2026-10-20', 0.17);
+  assert.equal(p.length, 13);
+  // jetzt: Woche 2 → 75 + 5 = 80 Min, 960 wache Minuten → 12 am Tag
+  assert.equal(p[0].interval, 80);
+  assert.equal(p[0].units, 12);
+  assert.ok(p[12].euro < p[6].euro && p[6].euro < p[0].euro);
+  // In der ersten Woche: erst noch der Ausgangswert
+  const w = planProjection(base, S0, '2026-10-02', 0.17);
+  assert.equal(w[0].units, 13);
+  // Ohne Zuwachs: flach
+  const flat = planProjection(base, { ...S0, step_min: 0 }, '2026-10-20', 0.17);
+  assert.equal(flat[0].euro, flat[12].euro);
+  assert.equal(planProjection({ perDay: 13, gap: null }, S0, '2026-10-20', 0.17), null);
 });

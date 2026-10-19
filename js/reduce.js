@@ -122,3 +122,43 @@ export function recentAvg(events, T, n = 7, notBefore = '0000-00-00') {
 
 // Neues Ereignis „jetzt“
 export const newEvent = (kind = 'rauchen', now = new Date()) => ({ kind, at: now.toISOString(), day: toDay(now) });
+
+// Was das Rauchen kostet: ausgegeben seit Start und hochgerechnet (Tag, Monat, Jahr).
+// Basis „recent“ = Ø der letzten 7 abgeschlossenen Tage, „start“ = Ø seit Start. Heute zählt beim Schnitt noch nicht.
+export function costStats(events, settings, T, unitCost, basis = 'recent') {
+  if (!settings) return null;
+  const counts = countsByDay(events);
+  let units = 0;
+  for (const [d, n] of counts) if (d >= settings.started_on && d <= T) units += n;
+  let sum = 0; let days = 0;
+  for (let d = settings.started_on; d < T; d = addDays(d, 1)) { sum += counts.get(d) || 0; days += 1; }
+  const sinceStart = days ? sum / days : null;
+  const recent = recentAvg(events, T, 7, settings.started_on);
+  const rate = basis === 'start' ? sinceStart : (recent ?? sinceStart);
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return {
+    spent: { units, euro: r2(units * unitCost) },
+    days,
+    rate: rate == null ? null : Math.round(rate * 10) / 10,
+    perDay: rate == null ? null : r2(rate * unitCost),
+    perMonth: rate == null ? null : Math.round(rate * unitCost * 30.4),
+    perYear: rate == null ? null : Math.round(rate * unitCost * 365)
+  };
+}
+
+// Plan-Kurve: Was kostet ein Monat, wenn der Abstand weiter nach Plan wächst?
+// Grobes Modell: wache Minuten pro Tag ÷ Abstand = Zigaretten, die noch Platz haben (höchstens der Ausgangswert).
+// Kein Versprechen, keine Frist – bleibt der Abstand länger gleich, wird die Kurve flacher.
+export function planProjection(base, settings, T, unitCost, months = 12) {
+  if (!settings || !base || !base.gap || !base.perDay) return null;
+  const a = hm(settings.night_from); const b = hm(settings.night_to);
+  const awake = 1440 - (a > b ? 1440 - a + b : b - a);
+  const out = [];
+  for (let m = 0; m <= months; m += 1) {
+    const day = addDays(T, Math.round(m * 30.4));
+    const iv = currentInterval(base, settings, day);
+    const units = iv ? Math.min(base.perDay, awake / iv.minutes) : base.perDay;
+    out.push({ m, day, interval: iv ? iv.minutes : null, units: Math.round(units * 10) / 10, euro: Math.round(units * unitCost * 30.4) });
+  }
+  return out;
+}
