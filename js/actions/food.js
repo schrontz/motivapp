@@ -32,8 +32,8 @@ async function logFavorite(id) {
   S.foodUndo = meal;
   clearTimeout(undoTimer);
   undoTimer = setTimeout(() => { if (S.foodUndo === meal) { S.foodUndo = null; render(); } }, 10000);
-  render();
   toast(`${f.name} · ${meal.plants.length} ${meal.plants.length === 1 ? 'Pflanze' : 'Pflanzen'}`);
+  go('#/'); // zurück zur Übersicht – dort steht „Rückgängig“
   const saved = await persist(() => db.saveMeal(meal));
   if (!saved) return;
   meal.id = saved.id;
@@ -173,7 +173,7 @@ async function toFavorite(id) {
   if (!m) return;
   const fav = { name: m.name, items: m.items || [], plants: m.plants || [], home: !!m.home, sort_order: (S.mealFavorites || []).length };
   S.mealFavorites = (S.mealFavorites || []).concat(fav);
-  toast(`„${m.name}“ ist jetzt ein Favorit – auf der Übersicht reicht ein Tipp.`);
+  toast(`„${m.name}“ ist jetzt ein Favorit – beim Eintragen reicht ein Tipp.`);
   render();
   const saved = await persist(() => db.saveFavorite(fav));
   if (saved) { Object.assign(fav, saved); m.fav_id = fav.id; await persist(() => db.saveMeal(m)); }

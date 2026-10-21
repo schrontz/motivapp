@@ -494,7 +494,7 @@ button.dest-row:first-child { border-top: 0; }
 .food-list { display: flex; flex-direction: column; border-top: 1px solid var(--border); padding-top: 6px; }
 .food-row { display: flex; justify-content: space-between; gap: 10px; min-height: 40px; align-items: center; font-size: 14px; color: inherit; text-decoration: none; }
 .food-plus { color: var(--c-green); font-weight: 600; flex: none; }
-.food-btn { border-color: var(--c-green); color: var(--c-green); text-decoration: none; display: flex; align-items: center; justify-content: center; }
+.btn.food-btn { border-color: var(--c-green); color: var(--c-green); text-decoration: none; display: flex; align-items: center; justify-content: center; }
 .food-nrow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 48px; gap: 8px; align-items: center; font-size: 14px; }
 .food-nrow .food-track { height: 10px; border-radius: 5px; margin: 0; }
 .food-nrow b { text-align: right; font-variant-numeric: tabular-nums; }
@@ -518,3 +518,4 @@ button.dest-row:first-child { border-top: 0; }
 .food-item { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 44px; }
 .food-g { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
 .mini-round.small { width: 36px; height: 36px; font-size: 18px; flex: none; }
+.food-label { hyphens: manual; overflow-wrap: anywhere; line-height: 1.25; }

@@ -33,22 +33,17 @@ export function foodCard(S, T) {
   const d = dayFood(S.meals, T);
   const w = week(S.meals, T, weightOf(S));
   const pref = proteinRef(weightOf(S));
-  const favs = (S.mealFavorites || []).map((f) => {
-    const done = d.meals.some((m) => m.fav_id === f.id);
-    return `<button type="button" class="chip food-fav" data-action="food-fav" data-id="${esc(f.id)}" aria-pressed="${done}">${done ? '✓ ' : ''}${esc(f.name)}</button>`;
-  }).join('');
   const eaten = d.meals.map((m) => `<a class="food-row" href="#/essen/${esc(m.id)}"><span><b>${esc(m.name)}</b> <span class="muted">· ${timeTxt(m.at)}</span></span><span class="food-plus">+${(m.plants || []).length} 🌱</span></a>`).join('');
   return `<section class="card pad food-card">
     <a class="reduce-head" href="#/essen"><span class="reduce-ico food-ico">${LEAF}</span><b style="flex: 1">Essen heute</b><span class="small" style="color: var(--c-blue)">Woche ›</span></a>
     <div class="stat3 inner">
       <div><div class="small muted">Pflanzen</div><b>${d.plants.length}<span class="small muted" style="font-weight: 500"> / 5</span></b>${bar((d.plants.length / 5) * 100)}</div>
-      <div><div class="small muted">Hülsenfrüchte</div><b>${w.legumes}<span class="small muted" style="font-weight: 500"> × Woche</span></b></div>
+      <div><div class="small muted food-label">Hülsen&shy;früchte</div><b>${w.legumes}<span class="small muted" style="font-weight: 500"> × Woche</span></b></div>
       <div><div class="small muted">Eiweiß</div><b>${d.protein == null ? 0 : d.protein}<span class="small muted" style="font-weight: 500"> g</span></b>${bar(((d.protein || 0) / pref) * 100, 'var(--c-blue)')}</div>
     </div>
-    ${favs ? `<div><div class="small muted" style="font-weight: 600; margin-bottom: 8px">Wie immer – ein Tipp</div><div class="food-chips">${favs}</div></div>` : '<p class="small muted">Speicher eine Mahlzeit als Favorit – dann reicht künftig ein Tipp.</p>'}
     ${eaten ? `<div class="food-list">${eaten}</div>` : ''}
     ${S.foodUndo ? '<button type="button" class="link-btn" data-action="food-undo">Gezählt · Rückgängig</button>' : ''}
-    <a class="btn ghost food-btn" href="#/essen-neu">Etwas anderes gegessen</a>
+    <a class="btn ghost food-btn" href="#/essen-neu">Essen eintragen</a>
   </section>`;
 }
 
@@ -99,7 +94,7 @@ export function foodView(S, T) {
     </section>
     <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
       <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">Favoriten</h2><a class="link-btn" href="#/essen-neu">+ Neu</a></div>
-      ${favs || '<p class="small muted">Beim Eintragen „Als Favorit merken“ ankreuzen – dann reicht künftig ein Tipp auf der Übersicht.</p>'}
+      ${favs || '<p class="small muted">Beim Eintragen „Als Favorit merken“ ankreuzen – dann reicht künftig ein Tipp unter „Essen eintragen“.</p>'}
     </section>
   </div>${nav('overview')}${plantSheet(S)}</div>`;
 }
@@ -156,10 +151,21 @@ export function foodForm(S, T) {
       <button type="button" class="mini-round small" data-action="food-grams" data-idx="${i}" data-id="1" aria-label="Mehr">+</button>
       <button type="button" class="goal-del" data-action="food-item-del" data-idx="${i}" aria-label="${esc(it.name)} entfernen">${X()}</button></div>`).join('');
   const portions = PORTIONS.map(([v, l]) => `<label><input type="radio" name="fportion" value="${v}"${Number(d.portion) === v ? ' checked' : ''} data-action="food-portion"><span>${l}</span></label>`).join('');
+  // Favoriten zuerst – nur beim neuen Eintrag und solange noch nichts gesucht/gewählt ist
+  const todays = dayFood(S.meals, T).meals;
+  const favs = (S.mealFavorites || []).map((f) => {
+    const done = todays.some((m) => m.fav_id === f.id);
+    return `<button type="button" class="chip food-fav" data-action="food-fav" data-id="${esc(f.id)}" aria-pressed="${done}">${done ? '✓ ' : ''}${esc(f.name)}</button>`;
+  }).join('');
+  const favBlock = d.editId || d.items.length || S.foodResults ? '' : `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="font-size: 17px">Wie immer – ein Tipp</h2>
+      ${favs ? `<div class="food-chips">${favs}</div>` : '<p class="small muted">Noch keine Favoriten. Unten beim Eintragen „Als Favorit merken“ ankreuzen – dann steht die Mahlzeit künftig hier.</p>'}
+    </section>`;
   return `<div class="app">${backBar(d.editId ? `#/essen/${esc(d.editId)}` : '#/', d.editId ? 'Mahlzeit' : 'Übersicht')}<div class="wrap" style="gap: 14px">
-    <h1 style="font-size: 28px; padding: 0 4px">${d.editId ? 'Bearbeiten' : 'Gegessen'}</h1>
+    <h1 style="font-size: 28px; padding: 0 4px">${d.editId ? 'Bearbeiten' : 'Essen eintragen'}</h1>
+    ${favBlock}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
-      <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : 'Was hast du gegessen?'}</h2>
+      <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : ((S.mealFavorites || []).length && !d.editId ? 'Etwas anderes?' : 'Was hast du gegessen?')}</h2>
       <form class="goal-search" data-form="food-search" role="search">
         <input class="input" type="search" name="q" value="${esc(S.foodQuery)}" placeholder="Gericht oder Zutat, z. B. Flammkuchen" aria-label="Gericht oder Zutat suchen" enterkeyhint="search" autocomplete="off">
         <button type="submit" class="btn" ${S.foodSearching ? 'disabled' : ''}>${S.foodSearching ? '…' : 'Suchen'}</button>
@@ -184,7 +190,7 @@ export function foodForm(S, T) {
     </section>` : ''}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
       <label class="switch-row" style="cursor: pointer"><span><b>Selbst gekocht</b></span><input type="checkbox" class="reduce-check food-check" data-action="food-home" ${d.home ? 'checked' : ''}></label>
-      ${d.editId ? '' : `<label class="switch-row" style="cursor: pointer"><span><b>Als Favorit merken</b><br><span class="small muted">Dann reicht künftig ein Tipp auf der Übersicht</span></span><input type="checkbox" class="reduce-check food-check" data-action="food-fav-mark" ${d.fav ? 'checked' : ''}></label>`}
+      ${d.editId ? '' : `<label class="switch-row" style="cursor: pointer"><span><b>Als Favorit merken</b><br><span class="small muted">Dann reicht künftig ein Tipp – ganz oben beim Eintragen</span></span><input type="checkbox" class="reduce-check food-check" data-action="food-fav-mark" ${d.fav ? 'checked' : ''}></label>`}
     </section>
     <p class="small" style="color: var(--danger); min-height: 18px" id="food-error" role="alert"></p>
     <button type="button" class="btn" data-action="food-save" style="background: var(--food)">${d.editId ? 'Speichern' : 'Eintragen'}</button>
