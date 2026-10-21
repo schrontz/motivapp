@@ -54,7 +54,10 @@ async function undo() {
 // ───────────── Eintragen ─────────────
 let lastSearch = 0;
 async function search(form) {
-  const q = String(new FormData(form).get('q') || '').trim();
+  return runSearch(String(new FormData(form).get('q') || '').trim());
+}
+
+async function runSearch(q) {
   if (!q) { resetSearch(); render(); return; }
   S.foodQuery = q;
   S.foodSearching = true;
@@ -108,6 +111,8 @@ async function saveDraft() {
   if (!d) return;
   const name = (d.name || '').trim();
   if (!name) {
+    d.showName = true;
+    render();
     const el = document.getElementById('food-error');
     if (el) el.textContent = 'Bitte kurz sagen, was es war – z. B. „Flammkuchen“.';
     document.querySelector('[name="fname"]')?.focus();
@@ -236,7 +241,13 @@ export const clicks = {
 };
 
 export const changes = {
-  'food-name': ({ el }) => { if (S.foodDraft) S.foodDraft.name = el.value; },
+  // Name eingetippt, aber noch nichts gesucht? Dann gleich danach suchen – so findet man es auch über dieses Feld
+  'food-name': ({ el }) => {
+    const d = S.foodDraft;
+    if (!d) return;
+    d.name = el.value;
+    if (!d.items.length && !S.foodResults && d.name.trim().length >= 3) runSearch(d.name.trim());
+  },
   'food-portion': ({ el }) => { if (S.foodDraft) { S.foodDraft.portion = Number(el.value) || 1; render(); } },
   'food-home': ({ el }) => { if (S.foodDraft) S.foodDraft.home = el.checked; },
   'food-fav-mark': ({ el }) => { if (S.foodDraft) S.foodDraft.fav = el.checked; },

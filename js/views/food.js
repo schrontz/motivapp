@@ -159,13 +159,14 @@ export function foodForm(S, T) {
   return `<div class="app">${backBar(d.editId ? `#/essen/${esc(d.editId)}` : '#/', d.editId ? 'Mahlzeit' : 'Übersicht')}<div class="wrap" style="gap: 14px">
     <h1 style="font-size: 28px; padding: 0 4px">${d.editId ? 'Bearbeiten' : 'Gegessen'}</h1>
     <section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
-      <label class="field"><span>Was war's?</span><input class="input" name="fname" value="${esc(d.name)}" placeholder="z. B. Flammkuchen" data-action="food-name" autocomplete="off"></label>
+      <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : 'Was hast du gegessen?'}</h2>
       <form class="goal-search" data-form="food-search" role="search">
-        <input class="input" type="search" name="q" value="${esc(S.foodQuery)}" placeholder="Was war drin? Gericht oder Zutat suchen" aria-label="Lebensmittel suchen" enterkeyhint="search" autocomplete="off">
-        <button type="submit" class="btn" ${S.foodSearching ? 'disabled' : ''}>Suchen</button>
+        <input class="input" type="search" name="q" value="${esc(S.foodQuery)}" placeholder="Gericht oder Zutat, z. B. Flammkuchen" aria-label="Gericht oder Zutat suchen" enterkeyhint="search" autocomplete="off">
+        <button type="submit" class="btn" ${S.foodSearching ? 'disabled' : ''}>${S.foodSearching ? '…' : 'Suchen'}</button>
       </form>
       ${results ? `<div class="food-hits">${results}</div>` : ''}
-      ${items ? `<div class="food-items">${items}</div>` : '<p class="small muted">Tipp: Für Auswärts reicht oft ein ganzes Gericht – z. B. „Flammkuchen“, „Döner“, „Pizza“.</p>'}
+      ${items ? `<div class="food-items">${items}</div>` : (results ? '' : '<p class="small muted">Für Auswärts reicht oft ein ganzes Gericht – z. B. „Flammkuchen“, „Döner“, „Pizza“. Treffer antippen, dann steht es unten drin.</p>')}
+      ${d.items.length || d.name || d.plants.length || d.showName ? `<label class="field"><span>Name des Eintrags</span><input class="input" name="fname" value="${esc(d.name)}" placeholder="z. B. Flammkuchen" data-action="food-name" autocomplete="off"></label>` : ''}
     </section>
     <section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <h2 style="font-size: 17px">Portion</h2>
