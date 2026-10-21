@@ -506,7 +506,7 @@ const demo = (() => {
   const sleep = [];
   return {
     body, sleep, heart,
-    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol'], tiles: ['steps', 'training', 'body'] },
+    profile: { id: 'demo', display_name: 'Jan', travel_queue: [], travel_from: null, modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }

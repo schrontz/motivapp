@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast, route } from '../core.js';
-import { walkedFor, travelFrom, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus, withPlaces, placeOf, wikiTitle, pickSummary, titleMatches } from '../distance.js';
+import { walkedFor, travelFrom, queueNext, startOf, activeGoal, goalStatus, CITIES, city, km, searchLocal, osmToPlace, stagesFor, stageStatus, withPlaces, placeOf, wikiTitle, pickSummary, titleMatches } from '../distance.js';
 
 const total = () => walkedFor(S).km;
 
@@ -35,6 +35,8 @@ export function markSeen() {
     S.celebrateId = g.id;
     persist(() => db.saveTravelGoal(g));
   }
+  // Vorgemerkt? Dann geht's ohne Pause mit dem nächsten Ziel weiter (die Feier bleibt trotzdem stehen)
+  if (fresh.length && hasQueue() && !activeGoal(S.travel)) activateNext();
   // Neue Etappe? Einmal feiern (bleibt sichtbar, bis man sie wegklickt oder das Ziel wechselt)
   const goal = S.hasStagesSchema && activeGoal(S.travel);
   if (!goal || !goal.id) return;
@@ -46,19 +48,58 @@ export function markSeen() {
   }
 }
 
-async function pick(name) {
+// ───────────── „Danach“-Liste ─────────────
+
+const hasQueue = () => !!(S.profile && Array.isArray(S.profile.travel_queue));
+
+async function saveQueue(q) {
+  S.profile.travel_queue = q;
+  await persist(() => db.updateProfile(S.profile.id, { travel_queue: q }));
+}
+
+function enqueue(name) {
+  if (!hasQueue()) return pick(name);
   const cur = activeGoal(S.travel);
-  const goal = cur || { id: null, reached_on: null, seen: false };
+  const q = S.profile.travel_queue;
+  S.travelSheet = false;
+  resetSearch();
+  if (cur && cur.city === name) { toast(`${name} ist schon dein Ziel.`); render(); return null; }
+  if (q.includes(name)) { toast(`${name} ist schon vorgemerkt.`); render(); return null; }
+  toast(`Vorgemerkt: ${name} (Platz ${q.length + 1})`);
+  const saving = saveQueue(q.concat(name)); // setzt die Liste sofort, speichert im Hintergrund
+  render();
+  return saving;
+}
+
+// Nächstes vorgemerktes Ziel aktivieren – läuft beim Zeichnen, deshalb ohne render() bis zum Speichern
+function activateNext() {
+  const r = queueNext(S.profile.travel_queue, startOf(S), total(), S.places);
+  if (!r.next && !r.skipped.length) return;
+  saveQueue(r.rest);
+  if (!r.next) return;
+  const goal = { id: null, reached_on: null, seen: false };
+  fillGoal(goal, r.next);
+  S.travel.push(goal);
+  persist(() => db.saveTravelGoal(goal)).then((saved) => { if (saved) { Object.assign(goal, saved); render(); } });
+}
+
+// Ziel-Felder setzen: Ort, Start, eigene Koordinaten (Update 007), schon passierte Etappen (werden nicht nachträglich gefeiert)
+function fillGoal(goal, name) {
   goal.city = name;
   goal.start_city = startOf(S);
-  // Eigene Orte: Koordinaten mit ins Ziel (Spalten gibt es erst mit Update 007)
   if (S.hasPlacesSchema) {
     const own = !CITIES.some((c) => c.name === name) && (S.places || []).find((p) => p.name === name);
     goal.lat = own ? Number(own.lat) : null;
     goal.lng = own ? Number(own.lng) : null;
   }
-  // Etappen, die beim Wählen schon hinter dir liegen, werden nicht nachträglich gefeiert
   if (S.hasStagesSchema) goal.stages_seen = stageStatus(stagesFor(goal, S.places), total()).reached;
+}
+
+async function pick(name) {
+  const cur = activeGoal(S.travel);
+  const goal = cur || { id: null, reached_on: null, seen: false };
+  if (hasQueue() && S.profile.travel_queue.includes(name)) saveQueue(S.profile.travel_queue.filter((n) => n !== name));
+  fillGoal(goal, name);
   S.stageCelebrate = null;
   resetSearch();
   if (!cur) S.travel.push(goal);
@@ -121,7 +162,7 @@ async function addPlace(idx) {
     return;
   }
   await saved;
-  await pick(place.name);
+  await (S.travelMode === 'later' && activeGoal(S.travel) ? enqueue(place.name) : pick(place.name));
 }
 
 async function deletePlace(name) {
@@ -191,13 +232,16 @@ async function clearGoal() {
 }
 
 export const clicks = {
-  'travel-open': () => { S.travelSheet = true; S.travelRegion = null; resetSearch(); render(); },
+  'travel-open': () => { S.travelSheet = true; S.travelMode = 'now'; S.travelRegion = null; resetSearch(); render(); },
+  'travel-queue-open': () => { S.travelSheet = true; S.travelMode = 'later'; S.travelRegion = null; resetSearch(); render(); },
+  'travel-queue-del': ({ id }) => { if (!hasQueue()) return null; const saving = saveQueue(S.profile.travel_queue.filter((n) => n !== id)); render(); return saving; },
+  'travel-celebrate-ok': () => { S.celebrateId = null; render(); },
   'travel-search-clear': () => { resetSearch(); render(); },
   'travel-add': ({ el }) => addPlace(el.dataset.idx),
   'travel-place-delete': ({ id }) => deletePlace(id),
   'travel-region': ({ id }) => { S.travelRegion = id; render(); },
   'travel-close': () => { S.travelSheet = false; resetSearch(); render(); },
-  'travel-pick': ({ id }) => pick(id),
+  'travel-pick': ({ id }) => (S.travelMode === 'later' && activeGoal(S.travel) ? enqueue(id) : pick(id)),
   'travel-none': () => { S.celebrateId = null; render(); },
   'travel-stage-ok': () => { S.stageCelebrate = null; render(); },
   'dist-all': () => { S.distAll = !S.distAll; render(); },
@@ -207,6 +251,7 @@ export const clicks = {
 };
 
 export const changes = {
+  'travel-mode': ({ el }) => { S.travelMode = el.value === 'later' ? 'later' : 'now'; render(); },
   'dist-range': ({ el }) => {
     S.distRange = el.value;
     local.set('distRange', el.value);

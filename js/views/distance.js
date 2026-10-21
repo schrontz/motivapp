@@ -1,6 +1,6 @@
 // „Wie weit bin ich gekommen?“ – Strecke als Kreis auf der Karte, zusammengezählt. Dazu ein Reiseziel ohne Termin.
 
-import { STARTS, walkedFor, travelFrom, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus, teaser } from '../distance.js';
+import { STARTS, walkedFor, travelFrom, queueNext, withPlaces, journey, pace, city, km, placeOf, startOf, activeGoal, reachedGoals, goalStatus, goalChoices, nextSuggestions, duration, stagesFor, stageStatus, teaser } from '../distance.js';
 import { monthName, monthStart } from '../dates.js';
 import { svg, UI_ICONS } from '../icons.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
@@ -9,7 +9,7 @@ const kmTxt = (v) => `${numTxt(v, v >= 100 || Number.isInteger(v) ? 0 : 1)} km`;
 const short = (name) => name.replace(' am Main', '');
 
 // Ein Ziel als Auswahl-Knopf (Auswahl-Sheet und Vorschläge nach der Ankunft)
-function goalOption(c, p, label = '', on = false) {
+function goalOption(c, p, label = '', on = false, queued = false) {
   if (c.inside) {
     return `<div class="goal-opt" aria-disabled="true">
       <span><span class="goal-opt-name">${esc(c.name)}</span>${c.label ? `<span class="small muted">${esc(c.label)}</span>` : ''}</span>
@@ -18,7 +18,7 @@ function goalOption(c, p, label = '', on = false) {
   }
   return `<button type="button" class="goal-opt" data-action="travel-pick" data-id="${esc(c.name)}"${on ? ' aria-pressed="true"' : ''}>
     <span>${label ? `<span class="goal-opt-label">${label}</span>` : ''}<span class="goal-opt-name">${esc(c.name)}</span>${c.label ? `<span class="small muted">${esc(c.label)}</span>` : ''}</span>
-    <span class="small muted" style="text-align: right">noch ${kmTxt(c.left)}${p ? `<br>${duration(c.left / p.perDay)}` : ''}</span>
+    <span class="small muted" style="text-align: right">${queued ? '<b style="color: var(--c-pink)">vorgemerkt</b><br>' : ''}noch ${kmTxt(c.left)}${p ? `<br>${duration(c.left / p.perDay)}` : ''}</span>
   </button>`;
 }
 
@@ -72,6 +72,38 @@ function stageStrip(stages, ss) {
     <div class="small muted stage-names">${names}</div>`;
 }
 
+const hasQueue = (S) => !!(S.profile && Array.isArray(S.profile.travel_queue));
+
+// „Danach“: vorgemerkte Ziele unter dem aktuellen Ziel
+function queueBlock(S, total) {
+  if (!hasQueue(S)) return '';
+  const all = withPlaces(S.places);
+  const start = city(startOf(S));
+  const rows = S.profile.travel_queue.map((name, i) => {
+    const c = all.find((x) => x.name === name);
+    const d = c ? Math.round(km(start, c)) : null;
+    return `<div class="queue-row"><span class="queue-n">${i + 1}</span><span style="flex: 1; min-width: 0"><b>${esc(name)}</b>${d != null ? ` <span class="small muted">· ${kmTxt(d)}${d <= total ? ' · schon im Kreis' : ''}</span>` : ''}</span>
+      <button type="button" class="goal-del" data-action="travel-queue-del" data-id="${esc(name)}" aria-label="${esc(name)} nicht mehr vormerken">${svg('M6 6l12 12M18 6L6 18', 16)}</button></div>`;
+  }).join('');
+  return `<div class="queue">
+    <div style="display: flex; justify-content: space-between; align-items: center"><span class="small muted" style="font-weight: 600">Danach</span><button type="button" class="link-btn" data-action="travel-queue-open">+ Ziel vormerken</button></div>
+    ${rows || '<p class="small muted">Merk dir Ziele vor – ist eins erreicht, geht’s ohne Pause mit dem nächsten weiter.</p>'}
+  </div>`;
+}
+
+// Feier oben, wenn es schon mit dem nächsten Ziel weitergeht
+function arrivedBanner(S, done, total, goal) {
+  const st = goalStatus(done, total);
+  return `<section class="celebrate celebrate-small">
+    <button type="button" class="celebrate-x" data-action="travel-celebrate-ok" aria-label="Feier schließen">${svg('M6 6l12 12M18 6L6 18', 16)}</button>
+    <div style="font-size: 14px; font-weight: 600; opacity: 0.9">Angekommen!</div>
+    <div class="celebrate-city">${esc(done.city)}</div>
+    <p>${kmTxt(st.dist)} zu Fuß von ${esc(short(done.start_city))}. Das bleibt, egal was kommt.</p>
+    <p style="font-weight: 600">Weiter geht’s nach ${esc(goal.city)} – aus deiner Liste.</p>
+    ${didYouKnow(S, done.city)}
+  </section>`;
+}
+
 function goalCard(S, total, p) {
   if (!S.hasTravelSchema) {
     return '<p class="hint" style="padding: 0 4px">Für Reiseziele bitte das Datenbank-Update 006 im SQL-Editor ausführen.</p>';
@@ -85,7 +117,8 @@ function goalCard(S, total, p) {
     const legPct = Math.round(ss.legShare * 100);
     const multi = stages.length > 1;
     const party = S.stageCelebrate && S.stageCelebrate.goalId === goal.id ? S.stageCelebrate.name : null;
-    return `<section class="card pad goal-card">
+    const done = S.celebrateId && S.travel.find((g) => g.id === S.celebrateId && g.reached_on);
+    return `${done ? arrivedBanner(S, done, total, goal) : ''}<section class="card pad goal-card">
       <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px">
         <div><div class="small muted" style="font-weight: 600">Dein Reiseziel</div><div class="goal-name">${esc(goal.city)}</div></div>
         <button type="button" class="link-btn" data-action="travel-open">Ändern</button>
@@ -102,6 +135,7 @@ function goalCard(S, total, p) {
         : `<span><b>${kmTxt(Math.min(total, st.dist))}</b> von ${kmTxt(st.dist)}</span><span class="muted">noch ${kmTxt(st.left)}</span>`}</div>
       ${multi ? stageStrip(stages, ss) : ''}
       <p class="small" style="line-height: 1.45">${multi ? `Ganze Reise: <b>${kmTxt(Math.min(total, st.dist))}</b> von ${kmTxt(st.dist)} (${pct} %)${p ? `, bei deinem Schnitt ${duration(st.left / p.perDay, true)}` : ''}.` : (p ? `Bei deinem Schnitt ${duration(st.left / p.perDay, true)}.` : '')} Kein Termin – nur eine Schätzung.</p>
+      ${queueBlock(S, total)}
     </section>`;
   }
   const done = S.celebrateId && S.travel.find((g) => g.id === S.celebrateId);
@@ -198,9 +232,11 @@ function searchResults(S, total, p) {
 
 function goalSheet(S, total, p) {
   const goal = activeGoal(S.travel);
+  const later = !!goal && hasQueue(S) && S.travelMode === 'later';
+  const queued = (name) => later && S.profile.travel_queue.includes(name);
   const opts = (items, removable = false) => `<div class="goal-list">${items.map((c) => removable
-    ? `<div class="goal-row">${goalOption(c, p, '', goal && goal.city === c.name)}<button type="button" class="goal-del" data-action="travel-place-delete" data-id="${esc(c.name)}" aria-label="${esc(c.name)} aus Meine Orte entfernen">${svg('M6 6l12 12M18 6L6 18', 18)}</button></div>`
-    : goalOption(c, p, '', goal && goal.city === c.name)).join('')}</div>`;
+    ? `<div class="goal-row">${goalOption(c, p, '', goal && goal.city === c.name, queued(c.name))}<button type="button" class="goal-del" data-action="travel-place-delete" data-id="${esc(c.name)}" aria-label="${esc(c.name)} aus Meine Orte entfernen">${svg('M6 6l12 12M18 6L6 18', 18)}</button></div>`
+    : goalOption(c, p, '', goal && goal.city === c.name, queued(c.name))).join('')}</div>`;
   const search = `<form class="goal-search" data-form="travel-search" role="search">
     <input class="input" type="search" name="q" value="${esc(S.travelQuery)}" placeholder="Ort suchen, z. B. Sylt" aria-label="Ort suchen" enterkeyhint="search" autocomplete="off">
     <button type="submit" class="btn" ${S.travelSearching ? 'disabled' : ''}>Suchen</button>
@@ -233,6 +269,10 @@ function goalSheet(S, total, p) {
       <h2 style="font-size: 22px">Reiseziel wählen</h2>
       <p class="small muted" style="margin-top: 2px">${p ? `Du läufst etwa ${kmTxt(p.perWeek)} in der Woche. Die Zeiten sind Schätzungen.` : 'Von ' + esc(short(startOf(S))) + ' aus, Luftlinie.'}</p>
     </div>
+    ${goal && hasQueue(S) ? `<div class="seg small-seg" role="radiogroup" aria-label="Was soll das Antippen tun?">
+      ${[['now', 'Jetzt als Ziel'], ['later', 'Für danach']].map(([id, label]) => `<label><input type="radio" name="tmode" value="${id}"${(later ? 'later' : 'now') === id ? ' checked' : ''} data-action="travel-mode"><span>${label}</span></label>`).join('')}
+    </div>
+    <p class="small muted">${later ? `Antippen merkt das Ziel vor – es kommt dran, sobald du ${esc(goal.city)} erreicht hast.` : 'Antippen macht es sofort zu deinem Ziel.'}</p>` : ''}
     ${search}
     <div>${groups || '<p class="muted">Alle Ziele erreicht. Wahnsinn.</p>'}</div>
     ${goal ? '<button type="button" class="btn ghost" data-action="travel-clear">Ohne Ziel weiterlaufen</button>' : ''}
@@ -358,6 +398,11 @@ function reachedList(S) {
 }
 
 // Kleine Karte auf der Übersicht, bis die Ankunft einmal angesehen wurde
+function nextTxt(S) {
+  const next = hasQueue(S) && queueNext(S.profile.travel_queue, startOf(S), walkedFor(S).km, S.places).next;
+  return next ? `Weiter geht’s nach ${esc(next)} – ansehen` : 'Dein Reiseziel – ansehen';
+}
+
 export function travelArrivedCard(S) {
   const g = (S.travel || []).find((x) => x.reached_on && !x.seen);
   if (!g) {
@@ -375,7 +420,7 @@ export function travelArrivedCard(S) {
   }
   return `<a class="card pad dist-link travel-arrived" href="#/distance">
     <span class="goal-flag big">${svg(UI_ICONS.flag, 20, 2.4)}</span>
-    <span style="flex: 1"><b>Angekommen in ${esc(g.city)}!</b><br><span class="small muted">Dein Reiseziel – ansehen</span></span>
+    <span style="flex: 1"><b>Angekommen in ${esc(g.city)}!</b><br><span class="small muted">${nextTxt(S)}</span></span>
     <span aria-hidden="true">›</span>
   </a>`;
 }

@@ -165,6 +165,21 @@ export function goalStatus(goal, total) {
   return { dist, left, share: dist > 0 ? Math.min(1, total / dist) : 1, reached: total >= dist };
 }
 
+// „Danach“-Liste: das nächste Ziel, das noch vor dir liegt. Schon erreichte oder unbekannte Orte werden übersprungen.
+export function queueNext(queue, startName, total, places = []) {
+  const all = withPlaces(places);
+  const start = city(startName);
+  const rest = [...(queue || [])];
+  const skipped = [];
+  while (rest.length) {
+    const name = rest.shift();
+    const place = all.find((c) => c.name === name);
+    if (!place || place.name === start.name || km(start, place) <= total) { skipped.push(name); continue; }
+    return { next: name, rest, skipped };
+  }
+  return { next: null, rest: [], skipped };
+}
+
 // Grobe Dauer, freundlich gerundet. inText: „in etwa 7 Tagen“ statt „etwa 7 Tage“.
 export function duration(days, inText = false) {
   let n; let unit;

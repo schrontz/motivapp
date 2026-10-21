@@ -29,6 +29,7 @@ export const S = {
   travel: [],
   hasTravelSchema: false,
   travelSheet: false,
+  travelMode: 'now',
   travelRegion: null,
   places: [],
   hasPlacesSchema: false,

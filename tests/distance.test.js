@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { km, city, walked, journey, pace, CITIES, STARTS, travelFrom, walkedFor } from '../js/distance.js';
+import { km, city, walked, journey, pace, CITIES, STARTS, travelFrom, walkedFor, queueNext } from '../js/distance.js';
 
 test('Luftlinie stimmt ungefähr', () => {
   const f = city('Frankfurt am Main');
@@ -172,4 +172,16 @@ test('Strecke zählt ab: eigenes Datum, sonst 30 Tage vor dem Verbinden', () => 
   // Monat: späteres Datum gewinnt
   assert.equal(walkedFor(S, '2026-09-01', '2026-09-30').km, 0);
   assert.equal(travelFrom({ activity }), '0000-00-00');
+});
+
+test('Danach-Liste: nächstes Ziel, schon Erreichtes wird übersprungen', () => {
+  // Frankfurt → Mainz ~30 km, Köln ~150 km, Amsterdam ~360 km
+  const r = queueNext(['Mainz', 'Gibtsnicht', 'Köln', 'Amsterdam'], 'Frankfurt am Main', 100);
+  assert.equal(r.next, 'Köln');
+  assert.deepEqual(r.rest, ['Amsterdam']);
+  assert.deepEqual(r.skipped, ['Mainz', 'Gibtsnicht']);
+  assert.equal(queueNext([], 'Frankfurt am Main', 100).next, null);
+  // eigene Orte zählen mit
+  const mine = queueNext(['Cefalù'], 'Frankfurt am Main', 100, [{ name: 'Cefalù', lat: 38.04, lng: 14.02 }]);
+  assert.equal(mine.next, 'Cefalù');
 });
