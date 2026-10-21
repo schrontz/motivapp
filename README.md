@@ -14,7 +14,7 @@ Live: https://schrontz.github.io/motivapp/ · Demo ohne Login: https://schrontz.
 ## Datenbank-Updates
 
 Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede einmal, Wiederholen schadet nicht):
-`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql` → `006_reise.sql` → `007_orte.sql` → `008_etappen.sql` → `009_weniger.sql` → `010_puls.sql` → `011_puls_tag.sql` (danach jeweils die Server-Funktion `withings` neu einspielen) → `012_strecke_ab.sql` → `013_alkohol.sql` → `014_reise_danach.sql`
+`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql` → `006_reise.sql` → `007_orte.sql` → `008_etappen.sql` → `009_weniger.sql` → `010_puls.sql` → `011_puls_tag.sql` (danach jeweils die Server-Funktion `withings` neu einspielen) → `012_strecke_ab.sql` → `013_alkohol.sql` → `014_reise_danach.sql` → `015_essen.sql` (+ `bls_motivator.csv` in `bls_foods` importieren, siehe `supabase/bls/`)
 
 ## Withings verbinden (einmalig)
 

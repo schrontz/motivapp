@@ -8,6 +8,7 @@ import { todayItems, sortTodayItems, todayRing, windowQuota, totalHits, schedule
 import { travelArrivedCard } from './distance.js';
 import { reduceCard } from './reduce.js';
 import { alcoholCard, alcoholSheet } from './alcohol.js';
+import { foodCard } from './food.js';
 import { bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
 export function tilesSection(S, T) {
@@ -183,6 +184,7 @@ export function overview(S, T) {
       ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused))}
       ${reduceCard(S, T)}
       ${alcoholCard(S, T)}
+      ${foodCard(S, T)}
       <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
       ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
       ${list}

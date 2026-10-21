@@ -1,0 +1,78 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { guessPlants, searchPlants, isLegume, nutrOf, percentOf, proteinRef, dayFood, week, discovery, defaultGrams, PLANTS } from '../js/food.js';
+
+test('Pflanzen aus BLS-Namen erraten', () => {
+  assert.deepEqual(guessPlants(['Speisezwiebel roh', 'Hafer Flocken', 'Heidelbeere roh']), ['Zwiebel', 'Hafer', 'Heidelbeere']);
+  assert.deepEqual(guessPlants(['Rote-Linsensuppe mit Koriander']), ['Rote Linse', 'Koriander']);
+  assert.deepEqual(guessPlants(['Flammkuchen Elsässer Art']), ['Weizen']);
+  assert.deepEqual(guessPlants(['Salatgurke roh']), ['Gurke'], 'keine falsche „Salat“-Pflanze');
+  assert.deepEqual(guessPlants(['Hummus/Kichererbsenmus']), ['Kichererbse']);
+  assert.ok(!guessPlants(['Maischbrot']).includes('Mais'));
+  assert.equal(new Set(PLANTS.map((p) => p.name)).size, PLANTS.length, 'keine doppelten Namen');
+});
+
+test('Pflanzen suchen und Hülsenfrüchte', () => {
+  assert.equal(searchPlants('kich')[0].name, 'Kichererbse');
+  assert.ok(isLegume('Linse') && isLegume('Soja') && !isLegume('Hafer'));
+  assert.deepEqual(searchPlants(''), []);
+});
+
+const FOODS = new Map([
+  ['C133000', { kcal: 348, protein: 13.22, fiber: 10.983, iron: 4.4366, zinc: 3.6421, vit_c: 0, vit_d: null }],
+  ['X934412', { kcal: 233, protein: 8.74, fiber: 1.9, iron: 0.6, zinc: 0.6, vit_c: 1.349 }]
+]);
+
+test('Nährwerte: Gramm × Portion, unbekannt bleibt leer', () => {
+  const n = nutrOf([{ code: 'C133000', grams: 60 }], FOODS, 1);
+  assert.equal(n.kcal, 208.8);
+  assert.equal(n.protein, 7.93);
+  assert.equal(n.vit_d, null, 'nicht bestimmt ≠ 0');
+  const big = nutrOf([{ code: 'X934412', grams: 350 }], FOODS, 1.5);
+  assert.equal(big.kcal, 1223.25);
+  assert.equal(nutrOf([{ code: 'gibtsnicht', grams: 100 }], FOODS).kcal, null);
+});
+
+test('Prozent vom Tagesbedarf, Eiweiß nach Gewicht', () => {
+  assert.equal(proteinRef(84), 67);
+  assert.equal(proteinRef(null), 57);
+  const p = percentOf({ protein: 33.5, iron: 5.5, vit_d: null }, 84);
+  assert.equal(p.find((x) => x.key === 'protein').pct, 50);
+  assert.equal(p.find((x) => x.key === 'iron').pct, 50);
+  assert.equal(p.find((x) => x.key === 'vit_d').pct, null);
+});
+
+const meal = (day, plants, protein, home = false, at = '12:00') => ({ day, at: `${day}T${at}:00Z`, plants, home, nutr: { protein, iron: 3, zinc: 2 } });
+
+test('Tag und Woche: Sammelalbum, 5 am Tag, Hülsenfrüchte, selbst gekocht', () => {
+  const meals = [
+    meal('2026-10-19', ['Hafer', 'Heidelbeere', 'Walnuss'], 15, true, '08:00'),
+    meal('2026-10-19', ['Linse', 'Zwiebel', 'Tomate'], 25, true, '19:00'),
+    meal('2026-10-20', ['Hafer', 'Apfel'], 12, false),
+    meal('2026-10-14', ['Kichererbse'], 20, true) // Vorwoche
+  ];
+  const d = dayFood(meals, '2026-10-19');
+  assert.equal(d.plants.length, 6);
+  assert.equal(d.protein, 40);
+  const w = week(meals, '2026-10-21', 84);
+  assert.deepEqual(w.album, ['Hafer', 'Heidelbeere', 'Walnuss', 'Linse', 'Zwiebel', 'Tomate', 'Apfel']);
+  assert.equal(w.logged, 2);
+  assert.equal(w.plantsAvg, 4);
+  assert.equal(w.fiveDays, 1);
+  assert.equal(w.legumes, 1);
+  assert.equal(w.legumesPrev, 1);
+  assert.equal(w.proteinAvg, 26);
+  assert.equal(w.home, 2);
+  assert.equal(w.out, 1);
+  assert.equal(w.days[3].future, true);
+  const iron = w.percent.find((x) => x.key === 'iron');
+  assert.equal(iron.pct, Math.round((4.5 / 11) * 100));
+  const disc = discovery(w.percent);
+  assert.equal(disc.key, 'zinc'); // 3/14 ≈ 21 % < Eisen 41 %
+  assert.ok(disc.tip.includes('Kürbiskerne'));
+});
+
+test('Standard-Gramm: Gerichte eine Portion', () => {
+  assert.equal(defaultGrams('X934412'), 350);
+  assert.equal(defaultGrams('G480100'), 100);
+});

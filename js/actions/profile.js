@@ -3,7 +3,7 @@
 import * as db from '../db.js';
 import { S, render, toast, persist } from '../core.js';
 import { today } from '../dates.js';
-import { alphaOn, bodyOn, reduceOn, alcoholOn } from '../views.js';
+import { alphaOn, bodyOn, reduceOn, alcoholOn, foodOn } from '../views.js';
 
 const TILE_ORDER = ['steps', 'training', 'body', 'active', 'distance'];
 
@@ -39,7 +39,9 @@ function exportData() {
     weniger_einstellungen: S.reduceSettings,
     weniger_ereignisse: S.reduceEvents,
     ruhepuls_naechte: S.sleep,
-    ruhepuls_tage: S.heart
+    ruhepuls_tage: S.heart,
+    mahlzeiten: S.meals,
+    essen_favoriten: S.mealFavorites
     // „Alkoholfrei“ steckt in weniger_einstellungen / weniger_ereignisse (Art „alkohol“)
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -77,7 +79,7 @@ export const clicks = {
     if (S.hasWithingsSchema) await persist(() => db.updateProfile(S.profile.id, { tiles: S.profile.tiles }));
   },
   'module-toggle': async ({ id }) => {
-    const on = id === 'body' ? bodyOn(S) : id === 'weniger' ? reduceOn(S) : id === 'alkohol' ? alcoholOn(S) : alphaOn(S);
+    const on = id === 'body' ? bodyOn(S) : id === 'weniger' ? reduceOn(S) : id === 'alkohol' ? alcoholOn(S) : id === 'essen' ? foodOn(S) : alphaOn(S);
     const p = setModule(id, !on);
     render();
     await p;
