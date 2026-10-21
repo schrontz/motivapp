@@ -4,6 +4,7 @@
 
 import { SUPABASE_URL, SUPABASE_KEY, SUPABASE_JS } from './config.js';
 import { today, addDays, toDay, weekStart } from './dates.js';
+import { searchTerms, rankFoods } from './food.js';
 
 export const isDemo = new URLSearchParams(location.search).has('demo');
 
@@ -88,19 +89,38 @@ export async function loadFoodData() {
   }
 }
 
-// Lebensmittel suchen: Treffer, die mit dem Wort anfangen, und rohe Lebensmittel zuerst
+// Lebensmittel suchen: jedes Wort muss vorkommen (Reihenfolge egal), Mehrzahl/Synonyme siehe food.js
 export async function searchFoods(q) {
-  const term = String(q || '').trim();
-  if (!term) return [];
+  const terms = searchTerms(q);
+  if (!terms.length) return [];
   let rows;
-  if (isDemo) rows = DEMO_FOODS.filter((f) => f.name.toLowerCase().includes(term.toLowerCase()));
-  else rows = check(await client.from('bls_foods').select('*').ilike('name', `%${term.replace(/[%_]/g, '')}%`).limit(60));
-  const t = term.toLowerCase();
-  const score = (f) => {
-    const n = f.name.toLowerCase();
-    return (n.startsWith(t) ? 0 : 2) + (/\broh\b/.test(n) ? 0 : 0.5) + n.length / 200;
-  };
-  return rows.sort((a, b) => score(a) - score(b)).slice(0, 25);
+  if (isDemo) {
+    rows = DEMO_FOODS.filter((f) => terms.every((alts) => alts.some((a) => f.name.toLowerCase().includes(a))));
+  } else {
+    let query = client.from('bls_foods').select('*');
+    for (const alts of terms) {
+      const pats = alts.map((a) => `*${a.replace(/[%_*,()]/g, '').replace(/ /g, '*')}*`);
+      query = pats.length === 1 ? query.ilike('name', pats[0].replace(/\*/g, '%')) : query.or(pats.map((p) => `name.ilike.${p}`).join(','));
+    }
+    rows = check(await query.limit(80));
+  }
+  return rankFoods(rows || [], terms).slice(0, 25);
+}
+
+// Open Food Facts über die Server-Funktion „openfoodfacts“ (setzt den Namen der App, den OFF verlangt)
+export async function offRequest(body) {
+  if (isDemo) {
+    const demoP = { code: '4000417025005', product_name_de: 'Harzer Käse (Demo)', brands: 'Demo-Molkerei', serving_quantity: 40, ingredients_text_de: 'Sauermilchquark, Speisesalz, Kümmel', nutriments: { 'energy-kcal_100g': 115, proteins_100g: 27, fat_100g: 0.5, carbohydrates_100g: 0.1, salt_100g: 4.5, calcium_100g: 0.125 } };
+    return body.action === 'product' ? { product: { ...demoP, code: body.code } } : { products: [demoP] };
+  }
+  const { data, error } = await client.functions.invoke('openfoodfacts', { body });
+  if (error) {
+    let detail = '';
+    try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
+    if (error.name === 'FunctionsFetchError' || (error.context && error.context.status === 404)) throw new Error('Die Server-Funktion „openfoodfacts“ fehlt noch (einspielen).');
+    throw new Error(detail || error.message || 'Open Food Facts nicht erreichbar');
+  }
+  return data;
 }
 
 export async function saveMeal(meal) {

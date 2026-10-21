@@ -52,7 +52,7 @@ const P = [
   ['Petersilie', 'Kräuter & Gewürze', ['petersilie']], ['Schnittlauch', 'Kräuter & Gewürze', ['schnittlauch']], ['Basilikum', 'Kräuter & Gewürze', ['basilikum']],
   ['Koriander', 'Kräuter & Gewürze', ['koriander']], ['Dill', 'Kräuter & Gewürze', ['dill']], ['Minze', 'Kräuter & Gewürze', ['minze', 'pfefferminze']],
   ['Rosmarin', 'Kräuter & Gewürze', ['rosmarin']], ['Thymian', 'Kräuter & Gewürze', ['thymian']], ['Oregano', 'Kräuter & Gewürze', ['oregano']],
-  ['Kurkuma', 'Kräuter & Gewürze', ['kurkuma']], ['Kreuzkümmel', 'Kräuter & Gewürze', ['kreuzkümmel', 'cumin']], ['Zimt', 'Kräuter & Gewürze', ['zimt']],
+  ['Kurkuma', 'Kräuter & Gewürze', ['kurkuma']], ['Kreuzkümmel', 'Kräuter & Gewürze', ['kreuzkümmel', 'cumin']], ['Kümmel', 'Kräuter & Gewürze', ['kümmel']], ['Zimt', 'Kräuter & Gewürze', ['zimt']],
   ['Chili', 'Kräuter & Gewürze', ['chili', 'peperoni', 'jalapeño']], ['Pfeffer', 'Kräuter & Gewürze', ['pfeffer']],
   ['Kakao', 'Kräuter & Gewürze', ['kakao', 'kakaopulver']], ['Kaffee', 'Kräuter & Gewürze', ['kaffee']]
 ];
@@ -207,7 +207,7 @@ export function discovery(percent) {
 }
 
 // Standard-Grammzahl für einen Treffer: Gerichte (BLS X/Y) eine Portion, sonst 100 g
-export const defaultGrams = (code) => (/^[XY]/.test(code || '') ? 350 : 100);
+export const defaultGrams = (code, serving = null) => (serving || (/^[XY]/.test(code || '') ? 350 : 100));
 
 // Werte je 100 g, die an einer Zutat mitgespeichert werden (damit Favoriten und Verlauf ohne Nachladen auskommen)
 export const per100 = (food) => Object.fromEntries(NUTR_KEYS.filter((k) => food[k] != null && food[k] !== '').map((k) => [k, Number(food[k])]));
@@ -224,3 +224,63 @@ export const PLANT_WIKI = {
   Mandel: 'Mandel', Lauch: 'Porree', Karotte: 'Karotte', Kartoffel: 'Kartoffel', Tomate: 'Tomate', Spinat: 'Spinat', Mungbohne: 'Mungbohne'
 };
 export const plantWikiTitle = (name) => PLANT_WIKI[name] || name;
+
+// ───────────── Suche im BLS ─────────────
+// Mehrere Wörter in beliebiger Reihenfolge, Mehrzahl → Wortstamm, Alltagswörter → BLS-Namen.
+// Ergebnis: je Wort eine Liste von Alternativen (eine davon muss im Namen vorkommen).
+const SYNONYMS = {
+  handkäse: ['sauermilchkäse'], harzer: ['sauermilchkäse'], mainzer: ['sauermilchkäse'], quargel: ['sauermilchkäse'],
+  nudel: ['teigwaren', 'nudel'], nudeln: ['teigwaren', 'nudel'], pasta: ['teigwaren', 'pasta'],
+  ei: ['hühnerei'], eier: ['hühnerei'], spiegelei: ['hühnerei'], rührei: ['rührei', 'hühnerei'],
+  äpfel: ['apfel'], semmel: ['brötchen', 'semmel'], semmeln: ['brötchen', 'semmel'], schrippe: ['brötchen'],
+  bulette: ['frikadelle', 'bulette'], buletten: ['frikadelle', 'bulette'], fleischpflanzerl: ['frikadelle'],
+  pommes: ['pommes'], fritten: ['pommes'], haferflocken: ['hafer flocken', 'haferflocken'], müsli: ['müsli', 'muesli'],
+  joghurt: ['joghurt', 'jogurt'], quark: ['quark'], frischkäse: ['frischkäse'], milch: ['milch'], brot: ['brot']
+};
+export function searchTerms(q) {
+  const words = String(q || '').toLowerCase().replace(/[^a-zäöüß0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length >= 2);
+  return words.map((w) => {
+    if (SYNONYMS[w]) return SYNONYMS[w];
+    // Mehrzahl/Endungen kürzen: „linsen“ → „lins“, „zwiebeln“ → „zwiebel“ – findet dann „Linse“, „Zwiebel“
+    const stem = w.length >= 5 ? w.replace(/(en|n|e|s)$/, '') : w;
+    return [stem.length >= 3 ? stem : w];
+  });
+}
+
+// Reihenfolge der Treffer: alle Wörter am Wortanfang vor „irgendwo“, rohe Lebensmittel vor Zubereitetem, kurze Namen zuerst
+export function rankFoods(rows, terms) {
+  const score = (f) => {
+    const n = String(f.name || '').toLowerCase();
+    const words = n.split(/[^a-zäöüß]+/);
+    let s = 0;
+    for (const alts of terms) if (!alts.some((a) => words.some((w) => w.startsWith(a)))) s += 1;
+    if (!/\broh\b/.test(n)) s += 0.5;
+    return s + n.length / 200;
+  };
+  return [...rows].sort((a, b) => score(a) - score(b));
+}
+
+// ───────────── Open Food Facts ─────────────
+// Produkt (Felder wie von OFF) → Lebensmittel mit Werten je 100 g. Mineralstoffe und Vitamine speichert OFF in g → umrechnen.
+const OFF_MAP = [
+  ['kcal', 'energy-kcal_100g', 1], ['protein', 'proteins_100g', 1], ['fat', 'fat_100g', 1], ['carbs', 'carbohydrates_100g', 1],
+  ['fiber', 'fiber_100g', 1], ['sugar', 'sugars_100g', 1], ['salt', 'salt_100g', 1],
+  ['iron', 'iron_100g', 1000], ['zinc', 'zinc_100g', 1000], ['magnesium', 'magnesium_100g', 1000], ['calcium', 'calcium_100g', 1000],
+  ['potassium', 'potassium_100g', 1000], ['vit_c', 'vitamin-c_100g', 1000], ['folate', 'folates_100g', 1e6],
+  ['vit_b12', 'vitamin-b12_100g', 1e6], ['vit_d', 'vitamin-d_100g', 1e6], ['iodine', 'iodine_100g', 1e6]
+];
+export function offToFood(p) {
+  if (!p || !p.code) return null;
+  const n = p.nutriments || {};
+  const name = (p.product_name_de || p.product_name || '').trim();
+  if (!name) return null;
+  const food = { code: 'off:' + p.code, name, brand: (p.brands || '').split(',')[0].trim(), source: 'off', ingredients: p.ingredients_text_de || p.ingredients_text || '' };
+  for (const [k, field, f] of OFF_MAP) {
+    const v = Number(n[field]);
+    food[k] = Number.isFinite(v) && n[field] !== '' && n[field] != null ? Math.round(v * f * 1000) / 1000 : null;
+  }
+  if (food.kcal == null && Number.isFinite(Number(n['energy_100g']))) food.kcal = Math.round(Number(n['energy_100g']) / 4.184);
+  const sq = Number(p.serving_quantity);
+  food.serving = Number.isFinite(sq) && sq > 0 && sq <= 1000 ? Math.round(sq) : null;
+  return food;
+}

@@ -3,7 +3,7 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast, go } from '../core.js';
-import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle } from '../food.js';
+import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood } from '../food.js';
 import { pickSummary } from '../distance.js';
 import { toDay } from '../dates.js';
 
@@ -13,11 +13,15 @@ function resetSearch() {
   S.foodQuery = '';
   S.foodResults = null;
   S.foodSearching = false;
+  S.offResults = null;
+  S.offSearching = false;
 }
 
 // Vorschlag der Pflanzen aus den Zutaten – nur ergänzen, nie etwas wieder abwählen, das man selbst gesetzt hat
-function suggestPlants(d) {
-  for (const p of guessPlants(d.items.map((i) => i.name).concat(d.name))) if (!d.plants.includes(p) && !(d.removed || []).includes(p)) d.plants.push(p);
+function suggestPlants(d, extra = '') {
+  // Zutatenlisten (Open Food Facts) nur bis zur ersten Klammer-Ebene – „Gewürze (Pfeffer, …)“ zählt trotzdem
+  const parts = d.items.map((i) => i.name).concat(d.name, String(extra || '').split(/[,;]/).slice(0, 25));
+  for (const p of guessPlants(parts)) if (!d.plants.includes(p) && !(d.removed || []).includes(p)) d.plants.push(p);
 }
 
 // ───────────── Favorit: ein Tipp ─────────────
@@ -78,15 +82,106 @@ async function runSearch(q) {
   render();
 }
 
-function addItem(idx) {
+function addFood(f) {
   const d = S.foodDraft;
-  const f = S.foodResults && S.foodResults[Number(idx)];
   if (!d || !f) return;
-  d.items.push({ code: f.code, name: f.name, grams: defaultGrams(f.code), n: per100(f) });
+  d.items.push({ code: f.code, name: f.name, grams: defaultGrams(f.code, f.serving), n: per100(f) });
   if (!d.name) d.name = f.name.split(/[,(]/)[0].trim();
-  suggestPlants(d);
+  suggestPlants(d, f.ingredients);
   resetSearch();
   render();
+}
+
+const addItem = (idx) => addFood(S.foodResults && S.foodResults[Number(idx)]);
+const addOff = (idx) => addFood(S.offResults && S.offResults[Number(idx)]);
+
+// Open Food Facts: Suche mit dem gleichen Begriff
+async function offSearch() {
+  const q = S.foodQuery;
+  if (!q || S.offSearching) return;
+  S.offSearching = true;
+  render();
+  try {
+    const res = await db.offRequest({ action: 'search', q });
+    if (S.foodQuery !== q) return;
+    S.offResults = (res.products || []).map(offToFood).filter(Boolean);
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Open Food Facts hat gerade nicht geantwortet.');
+  }
+  S.offSearching = false;
+  render();
+}
+
+// ───────────── Strichcode ─────────────
+let stream = null;
+let detector = null;
+let scanTimer = null;
+
+function stopCamera() {
+  clearTimeout(scanTimer);
+  scanTimer = null;
+  if (stream) { for (const t of stream.getTracks()) t.stop(); stream = null; }
+}
+
+async function openScanner() {
+  const can = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  if (!can) { S.scan = { mode: 'manual' }; render(); return; }
+  try {
+    const formats = await window.BarcodeDetector.getSupportedFormats();
+    detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'].filter((f) => formats.includes(f)) });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    S.scan = { mode: 'camera' };
+  } catch (err) {
+    console.warn(err);
+    stopCamera();
+    S.scan = { mode: 'manual', note: 'Ohne Kamera-Erlaubnis geht es auch so: Tipp die Nummer unter dem Strichcode ein.' };
+  }
+  render();
+}
+
+// Nach jedem Zeichnen: Kamera ans (neu gezeichnete) Video hängen und weiter suchen
+export function mountScanner() {
+  const video = document.getElementById('scan-video');
+  if (!video || !stream) return;
+  if (video.srcObject !== stream) video.srcObject = stream;
+  clearTimeout(scanTimer);
+  const tick = async () => {
+    if (!stream || !S.scan || S.scan.mode !== 'camera') return;
+    try {
+      const v = document.getElementById('scan-video');
+      if (v && v.readyState >= 2) {
+        const codes = await detector.detect(v);
+        if (codes.length) { lookup(codes[0].rawValue); return; }
+      }
+    } catch { /* nächster Versuch */ }
+    scanTimer = setTimeout(tick, 250);
+  };
+  scanTimer = setTimeout(tick, 250);
+}
+
+async function lookup(code) {
+  stopCamera();
+  if (navigator.vibrate) try { navigator.vibrate(60); } catch { /* egal */ }
+  S.scan = { ...(S.scan || {}), mode: 'manual', busy: true, error: null };
+  render();
+  try {
+    const res = await db.offRequest({ action: 'product', code });
+    const f = res.product && offToFood(res.product);
+    if (!f) { S.scan = { mode: 'manual', error: `Die Nummer ${code} kennt Open Food Facts noch nicht – such nach dem Namen.` }; render(); return; }
+    S.scan = null;
+    addFood(f);
+    toast(`${f.name}${f.brand ? ` (${f.brand})` : ''} – gefunden`);
+  } catch (err) {
+    console.error(err);
+    S.scan = { mode: 'manual', error: err.message || 'Open Food Facts hat gerade nicht geantwortet.' };
+    render();
+  }
+}
+
+export function closeScanner() {
+  stopCamera();
+  S.scan = null;
 }
 
 function grams(idx, dir) {
@@ -216,12 +311,17 @@ export function ensureDraft() {
 export function leaveDraft() {
   S.foodDraft = null;
   resetSearch();
+  closeScanner();
 }
 
 export const clicks = {
   'food-fav': ({ id }) => logFavorite(id),
   'food-undo': undo,
   'food-add': ({ el }) => addItem(el.dataset.idx),
+  'food-add-off': ({ el }) => addOff(el.dataset.idx),
+  'food-off': offSearch,
+  'food-scan': openScanner,
+  'scan-close': () => { closeScanner(); render(); },
   'food-grams': ({ el, id }) => grams(el.dataset.idx, id),
   'food-item-del': ({ el }) => { const d = S.foodDraft; if (!d) return; d.items.splice(Number(el.dataset.idx), 1); render(); },
   'food-group': ({ id }) => { S.foodGroup = id; render(); },
@@ -255,6 +355,11 @@ export const changes = {
 };
 
 export const submits = {
-  'food-search': (form) => search(form)
+  'food-search': (form) => search(form),
+  'food-code': (form) => {
+    const code = String(new FormData(form).get('code') || '').replace(/\D/g, '');
+    if (code.length < 6) { S.scan = { ...(S.scan || { mode: 'manual' }), error: 'Bitte die ganze Nummer unter dem Strichcode eintippen (meist 13 Ziffern).' }; render(); return null; }
+    return lookup(code);
+  }
 };
 

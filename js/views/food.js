@@ -15,6 +15,7 @@ const LEAF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke
 const X = (size = 16) => svg('M6 6l12 12M18 6L6 18', size);
 const timeTxt = (iso) => { const d = new Date(iso); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const PORTIONS = [[0.75, 'klein'], [1, 'normal'], [1.5, 'groß']];
+const BARCODE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6v12M7 6v12M10 6v12M14 6v12M16 6v12M20 6v12"></path></svg>';
 const portionTxt = (p) => (PORTIONS.find(([v]) => v === Number(p)) || [0, `${numTxt(p, 2)}×`])[1];
 
 export function weightOf(S) {
@@ -143,7 +144,16 @@ export function foodForm(S, T) {
   const results = S.foodResults
     ? (S.foodResults.length
       ? S.foodResults.map((f, i) => `<button type="button" class="food-hit" data-action="food-add" data-idx="${i}"><span>${esc(f.name)}</span><span class="small muted">${Math.round(Number(f.kcal) || 0)} kcal/100 g</span></button>`).join('')
-      : `<p class="small muted">${S.hasBls ? 'Nichts gefunden – anders schreiben, z. B. „Linse“ statt „Linsen“.' : 'Die Lebensmittel-Daten fehlen noch (CSV importieren).'}</p>`)
+      : `<p class="small muted" style="padding: 10px 12px">${S.hasBls ? 'Im Bundeslebensmittelschlüssel nichts gefunden.' : 'Die Lebensmittel-Daten fehlen noch (CSV importieren).'}</p>`)
+    : '';
+  // Open Food Facts: Markenprodukte – auf Knopfdruck, wenn der BLS nicht reicht
+  const off = S.offResults
+    ? (S.offResults.length
+      ? S.offResults.map((f, i) => `<button type="button" class="food-hit" data-action="food-add-off" data-idx="${i}"><span>${esc(f.name)}${f.brand ? ` <span class="muted">· ${esc(f.brand)}</span>` : ''}</span><span class="small muted">${f.kcal == null ? '' : `${Math.round(f.kcal)} kcal`}</span></button>`).join('')
+      : '<p class="small muted" style="padding: 10px 12px">Auch bei Open Food Facts nichts gefunden – anders schreiben oder Strichcode scannen.</p>')
+    : '';
+  const offBtn = S.foodResults && !S.offResults
+    ? `<button type="button" class="link-btn" data-action="food-off" ${S.offSearching ? 'disabled' : ''}>${S.offSearching ? 'Frage Open Food Facts …' : 'Nicht dabei? Bei Open Food Facts suchen (Markenprodukte)'}</button>`
     : '';
   const items = d.items.map((it, i) => `<div class="food-item"><span style="flex: 1; min-width: 0"><b>${esc(it.name)}</b></span>
       <button type="button" class="mini-round small" data-action="food-grams" data-idx="${i}" data-id="-1" aria-label="Weniger">−</button>
@@ -169,8 +179,11 @@ export function foodForm(S, T) {
       <form class="goal-search" data-form="food-search" role="search">
         <input class="input" type="search" name="q" value="${esc(S.foodQuery)}" placeholder="Gericht oder Zutat, z. B. Flammkuchen" aria-label="Gericht oder Zutat suchen" enterkeyhint="search" autocomplete="off">
         <button type="submit" class="btn" ${S.foodSearching ? 'disabled' : ''}>${S.foodSearching ? '…' : 'Suchen'}</button>
+        <button type="button" class="btn ghost scan-btn" data-action="food-scan" aria-label="Strichcode scannen">${BARCODE}</button>
       </form>
       ${results ? `<div class="food-hits">${results}</div>` : ''}
+      ${offBtn}
+      ${off ? `<div class="small muted" style="font-weight: 600">Open Food Facts</div><div class="food-hits">${off}</div>` : ''}
       ${items ? `<div class="food-items">${items}</div>` : (results ? '' : '<p class="small muted">Für Auswärts reicht oft ein ganzes Gericht – z. B. „Flammkuchen“, „Döner“, „Pizza“. Treffer antippen, dann steht es unten drin.</p>')}
       ${d.items.length || d.name || d.plants.length || d.showName ? `<label class="field"><span>Name des Eintrags</span><input class="input" name="fname" value="${esc(d.name)}" placeholder="z. B. Flammkuchen" data-action="food-name" autocomplete="off"></label>` : ''}
     </section>
@@ -194,7 +207,33 @@ export function foodForm(S, T) {
     </section>
     <p class="small" style="color: var(--danger); min-height: 18px" id="food-error" role="alert"></p>
     <button type="button" class="btn" data-action="food-save" style="background: var(--food)">${d.editId ? 'Speichern' : 'Eintragen'}</button>
-  </div>${nav('overview')}</div>`;
+    ${d.items.some((i) => String(i.code).startsWith('off:')) ? '<p class="small muted" style="padding: 0 4px">Produktdaten: Open Food Facts (ODbL) – von Freiwilligen gesammelt, meist ohne Vitamine und Mineralstoffe.</p>' : ''}
+  </div>${nav('overview')}${scanSheet(S)}</div>`;
+}
+
+// ───────────── Strichcode scannen ─────────────
+
+export function scanSheet(S) {
+  const sc = S.scan;
+  if (!sc) return '';
+  const camera = sc.mode === 'camera'
+    ? `<div class="scan-box"><video id="scan-video" playsinline muted autoplay></video><span class="scan-line"></span></div>
+      <p class="small muted">Strichcode der Packung ins Bild halten – der Rest geht von allein.</p>`
+    : `<p class="small muted">${esc(sc.note || 'Die Kamera kann hier keine Strichcodes lesen. Tipp die Nummer unter dem Strichcode ein.')}</p>`;
+  return `<button type="button" class="scrim" data-action="scan-close" aria-label="Schließen"></button>
+  <section class="sheet" role="dialog" aria-modal="true" aria-label="Strichcode scannen">
+    <div class="handle"></div>
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <h2 style="font-size: 22px">Strichcode</h2>
+      <button type="button" class="goal-del" data-action="scan-close" aria-label="Schließen" style="border: 0">${X(20)}</button>
+    </div>
+    ${sc.busy ? '<p class="muted">Suche das Produkt bei Open Food Facts …</p>' : camera}
+    <form class="goal-search" data-form="food-code">
+      <input class="input" name="code" inputmode="numeric" placeholder="oder Nummer eintippen" aria-label="Nummer unter dem Strichcode" autocomplete="off">
+      <button type="submit" class="btn">Suchen</button>
+    </form>
+    ${sc.error ? `<p class="small" style="color: var(--danger)" role="alert">${esc(sc.error)}</p>` : ''}
+  </section>`;
 }
 
 // ───────────── Eine Mahlzeit ─────────────

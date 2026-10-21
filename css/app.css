@@ -519,3 +519,7 @@ button.dest-row:first-child { border-top: 0; }
 .food-g { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
 .mini-round.small { width: 36px; height: 36px; font-size: 18px; flex: none; }
 .food-label { hyphens: manual; overflow-wrap: anywhere; line-height: 1.25; }
+.scan-btn { flex: none; width: 52px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.scan-box { position: relative; border-radius: 18px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; }
+.scan-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-line { position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: #FF5A5A; box-shadow: 0 0 8px #FF5A5A; }

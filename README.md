@@ -20,6 +20,7 @@ Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede ei
 
 1. **Withings-App anlegen:** developer.withings.com → Dashboard → neue App (Public API). Redirect-URL: `https://schrontz.github.io/motivapp/`. Client ID in `js/config.js` eintragen (`WITHINGS_CLIENT_ID`).
 2. **Server-Funktion:** Supabase → *Edge Functions* → *Deploy a new function* → *Via Editor* → Name `withings` → Inhalt von [`supabase/functions/withings/index.ts`](supabase/functions/withings/index.ts) einfügen → *Deploy*.
+   Genauso für Open Food Facts (Essen): Name `openfoodfacts`, Inhalt von [`supabase/functions/openfoodfacts/index.ts`](supabase/functions/openfoodfacts/index.ts) – keine Secrets nötig.
 3. **JWT-Prüfung aus:** In den Einstellungen der Funktion „Verify JWT“ / „Enforce JWT verification“ ausschalten (die Funktion prüft den Login selbst).
 4. **Secrets:** *Edge Functions → Secrets* → `WITHINGS_CLIENT_ID` und `WITHINGS_CLIENT_SECRET` anlegen. Das Secret gehört nur hierher – nie ins Repo.
 5. In der App: *Profil → Mit Withings verbinden*.

@@ -63,6 +63,7 @@ setRenderer(() => {
   unmountDistanceMap();
   root.innerHTML = html;
   if (r.name === 'distance') { mountDistanceMap(); distance.prefetchWiki(); }
+  if (r.name === 'essen-neu') food.mountScanner();
   if (S.sheet) {
     const input = document.getElementById('sheet-val');
     if (input && S.sheet.focus) { input.focus(); input.select(); S.sheet.focus = false; }
@@ -132,7 +133,7 @@ root.addEventListener('keydown', (e) => {
     e.preventDefault();
     document.querySelector('[data-action="sheet-save"]').click();
   }
-  if (e.key === 'Escape' && (S.sheet || S.pauseSheet || S.travelSheet || S.cityInfo || S.drinkSheet || S.plantInfo)) { S.sheet = null; S.pauseSheet = null; S.travelSheet = false; S.cityInfo = null; S.drinkSheet = null; S.plantInfo = null; render(); }
+  if (e.key === 'Escape' && (S.sheet || S.pauseSheet || S.travelSheet || S.cityInfo || S.drinkSheet || S.plantInfo || S.scan)) { S.sheet = null; S.pauseSheet = null; S.travelSheet = false; S.cityInfo = null; S.drinkSheet = null; S.plantInfo = null; food.closeScanner(); render(); }
 });
 
 // Timer auf Übersicht und „Weniger rauchen“ aktuell halten – nur, wenn gerade nichts offen ist

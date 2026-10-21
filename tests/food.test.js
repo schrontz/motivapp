@@ -76,3 +76,32 @@ test('Standard-Gramm: Gerichte eine Portion', () => {
   assert.equal(defaultGrams('X934412'), 350);
   assert.equal(defaultGrams('G480100'), 100);
 });
+
+import { searchTerms, rankFoods, offToFood } from '../js/food.js';
+
+test('Suche: Wörter, Mehrzahl, Synonyme', () => {
+  assert.deepEqual(searchTerms('Handkäse'), [['sauermilchkäse']]);
+  assert.deepEqual(searchTerms('Linsen'), [['lins']]);
+  assert.deepEqual(searchTerms('Brötchen Dinkel'), [['brötch'], ['dinkel']]);
+  assert.deepEqual(searchTerms('Zwiebeln'), [['zwiebel']]);
+  assert.deepEqual(searchTerms('Eier'), [['hühnerei']]);
+  assert.deepEqual(searchTerms('Käse'), [['käse']]);
+  assert.deepEqual(searchTerms('  '), []);
+  const rows = [{ name: 'Linsensuppe mit Gemüse' }, { name: 'Linse rot, getrocknet' }, { name: 'Linse braun roh' }];
+  assert.equal(rankFoods(rows, searchTerms('linsen'))[0].name, 'Linse braun roh');
+});
+
+test('Open Food Facts → Lebensmittel', () => {
+  const f = offToFood({ code: '4000417025005', product_name_de: 'Harzer Käse', brands: 'Loose, Gutes', serving_quantity: '40',
+    ingredients_text_de: 'Sauermilchquark, Speisesalz, Kümmel',
+    nutriments: { 'energy-kcal_100g': 115, proteins_100g: 27, fat_100g: 0.5, salt_100g: 4.5, calcium_100g: 0.125, 'vitamin-b12_100g': 0.0000012 } });
+  assert.equal(f.code, 'off:4000417025005');
+  assert.equal(f.brand, 'Loose');
+  assert.equal(f.kcal, 115);
+  assert.equal(f.calcium, 125, 'g → mg');
+  assert.equal(f.vit_b12, 1.2, 'g → µg');
+  assert.equal(f.iron, null, 'fehlt → unbekannt');
+  assert.equal(f.serving, 40);
+  assert.equal(offToFood({ code: '1', product_name: '' }), null);
+  assert.equal(offToFood({ code: '2', product_name: 'X', nutriments: { energy_100g: 418.4 } }).kcal, 100);
+});
