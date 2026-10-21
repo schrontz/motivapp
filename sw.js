@@ -1,11 +1,11 @@
 // Service Worker: App funktioniert auch bei wackeligem Netz.
 // Strategie: erst Netz (damit Updates sofort ankommen), bei Fehler der letzte Stand aus dem Cache.
-const CACHE = 'motivator-v35';
+const CACHE = 'motivator-v36';
 const SHARE = 'motivator-share'; // geteilte Dateien, bis die App sie abholt
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/core.js', './js/views.js', './js/stats.js', './js/dates.js', './js/db.js', './js/icons.js',
-  './js/config.js', './js/auto.js', './js/strength.js', './js/body.js', './js/distance.js', './js/map.js', './js/reduce.js', './js/pulse.js', './js/actions/reduce.js', './js/actions/body.js', './js/actions/distance.js',
+  './js/config.js', './js/auto.js', './js/strength.js', './js/body.js', './js/distance.js', './js/map.js', './js/reduce.js', './js/pulse.js', './js/alcohol.js', './js/views/alcohol.js', './js/actions/alcohol.js', './js/actions/reduce.js', './js/actions/body.js', './js/actions/distance.js',
   './js/actions/habits.js', './js/actions/imports.js', './js/actions/profile.js', './js/actions/strength.js',
   './js/actions/withings.js', './js/views/body.js', './js/views/distance.js', './js/views/reduce.js', './js/views/habits.js', './js/views/imports.js',
   './js/views/overview.js', './js/views/profile.js', './js/views/strength.js', './js/views/training.js',

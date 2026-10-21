@@ -14,7 +14,7 @@ Live: https://schrontz.github.io/motivapp/ · Demo ohne Login: https://schrontz.
 ## Datenbank-Updates
 
 Neue SQL-Dateien in `supabase/` der Reihe nach im SQL-Editor ausführen (jede einmal, Wiederholen schadet nicht):
-`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql` → `006_reise.sql` → `007_orte.sql` → `008_etappen.sql` → `009_weniger.sql` → `010_puls.sql` → `011_puls_tag.sql` (danach jeweils die Server-Funktion `withings` neu einspielen) → `012_strecke_ab.sql`
+`001_fundament.sql` → `002_mini_woche.sql` → `003_withings.sql` → `004_kraft.sql` → `005_koerper.sql` → `006_reise.sql` → `007_orte.sql` → `008_etappen.sql` → `009_weniger.sql` → `010_puls.sql` → `011_puls_tag.sql` (danach jeweils die Server-Funktion `withings` neu einspielen) → `012_strecke_ab.sql` → `013_alkohol.sql`
 
 ## Withings verbinden (einmalig)
 
@@ -49,6 +49,7 @@ Falls die Funktion „Kein Server-Schlüssel gefunden“ meldet: unter *Project 
 | `js/body.js` | Renpho-CSV, Verlauf mit 2-Wochen-Schnitt – getestet |
 | `js/distance.js` | Strecke, Luftlinie, Reiseziele, Etappen, Vorschläge, Ortssuche, Stadt-Wissen (Wikipedia) – getestet |
 | `js/reduce.js` | Weniger rauchen: Kosten (ausgegeben, hochgerechnet, Plan-Kurve), Ausgangswoche, Abstand mit Nachtruhe, Gespartes – getestet |
+| `js/alcohol.js` | Alkoholfrei: alkoholfreie Tage, wachsende Quote, Gespartes, Muster (wann/warum), Tag danach – getestet |
 | `js/pulse.js` | Ruhepuls aus Withings: Schlaf-Ø oder ruhigste halbe Stunde des Tages, Verlauf, vorher/jetzt – getestet |
 | `js/map.js` | Karte (Leaflet + OpenStreetMap, lädt erst auf der Strecken-Seite) |
 | `js/dates.js` | Datums-Hilfen |

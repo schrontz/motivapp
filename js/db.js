@@ -59,7 +59,7 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true };
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true };
   const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
@@ -82,10 +82,12 @@ export async function loadReduceData() {
       client.from('reduce_settings').select('*').then(check),
       fetchAll('reduce_events', 'at')
     ]);
-    return { reduceSettings: settings || [], reduceEvents: events, hasReduceSchema: true };
+    // „Alkoholfrei“ braucht Anzahl + Situation (Update 013)
+    const probe = await client.from('reduce_events').select('qty, tags').limit(1);
+    return { reduceSettings: settings || [], reduceEvents: events, hasReduceSchema: true, hasAlcoholSchema: !probe.error };
   } catch (err) {
     console.warn('„Weniger von …“ nicht verfügbar (Datenbank-Update 009 schon ausgeführt?)', err);
-    return { reduceSettings: [], reduceEvents: [], hasReduceSchema: false };
+    return { reduceSettings: [], reduceEvents: [], hasReduceSchema: false, hasAlcoholSchema: false };
   }
 }
 
@@ -475,7 +477,11 @@ const demo = (() => {
       reduceEvents.push({ id: 'r' + i + '-' + k, kind: 'rauchen', at: at.toISOString(), day: d });
     }
   }
-  const reduceSettings = [{ id: 'rs1', kind: 'rauchen', started_on: addDays(t, -20), costs: { tobacco_price: 6.75, tobacco_g: 30, paper_price: 2, paper_qty: 100, filter_price: 2, filter_qty: 120, g_per_unit: 0.6 }, night_from: '23:00', night_to: '07:00', step_min: 5, adjust_min: 0, show_card: true }];
+  // „Alkoholfrei“: seit 16 Tagen, zwei Biertage mit Situation
+  const drinkAt = (i, time) => { const d = addDays(t, -i); const at = new Date(d + 'T' + time + ':00'); return { day: d, at: at.toISOString() }; };
+  reduceEvents.push({ id: 'a1', kind: 'alkohol', qty: 4, tags: ['Feierabend', 'allein zu Hause'], ...drinkAt(11, '19:40') });
+  reduceEvents.push({ id: 'a2', kind: 'alkohol', qty: 3, tags: ['Langeweile'], ...drinkAt(4, '21:10') });
+  const reduceSettings = [{ id: 'rs2', kind: 'alkohol', started_on: addDays(t, -16), costs: { price: 2, per_week: 12, goal_start: 5, goal_every: 2 }, night_from: '23:00', night_to: '07:00', step_min: 0, adjust_min: 0, show_card: true }, { id: 'rs1', kind: 'rauchen', started_on: addDays(t, -20), costs: { tobacco_price: 6.75, tobacco_g: 30, paper_price: 2, paper_qty: 100, filter_price: 2, filter_qty: 120, g_per_unit: 0.6 }, night_from: '23:00', night_to: '07:00', step_min: 5, adjust_min: 0, show_card: true }];
   const plans = [{ id: 'plan-curls', exercise: 'Curls', equipment: 'Kurzhanteln', sets: 3, start_reps: 20, kg: 7, plus_reps: 2, every_weeks: 2, max_reps: 40, kg_step: 2, started_on: weekStart(addDays(t, -7)) }];
   // Körperwerte: alle 3–4 Tage eine Messung, leicht schwankend mit sanftem Trend
   const body = [];
@@ -500,7 +506,7 @@ const demo = (() => {
   const sleep = [];
   return {
     body, sleep, heart,
-    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body', 'weniger'], tiles: ['steps', 'training', 'body'] },
+    profile: { id: 'demo', display_name: 'Jan', modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
