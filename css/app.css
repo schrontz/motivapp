@@ -511,7 +511,7 @@ button.dest-row:first-child { border-top: 0; }
 .food-day > span[data-state="future"] { background: transparent; border: 1.5px dashed var(--border); }
 .food-day small { font-size: 11px; color: var(--muted); }
 .food-hits { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 14px; }
-.food-hit { display: flex; justify-content: space-between; gap: 10px; text-align: left; min-height: 48px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; font-size: 14px; }
+.food-hit { flex: none; line-height: 1.35; display: flex; justify-content: space-between; gap: 10px; text-align: left; min-height: 48px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; font-size: 14px; }
 .food-hit:last-child { border-bottom: 0; }
 .food-hit .small { flex: none; }
 .food-items { display: flex; flex-direction: column; gap: 6px; }

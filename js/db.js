@@ -107,14 +107,51 @@ export async function searchFoods(q) {
   return rankFoods(rows || [], terms).slice(0, 25);
 }
 
-// Open Food Facts über die Server-Funktion „openfoodfacts“ (setzt den Namen der App, den OFF verlangt)
+// Open Food Facts direkt vom Gerät – Antworten wie die Server-Funktion: { products } bzw. { product }
+const OFF_FIELDS = 'code,product_name,product_name_de,brands,nutriments,ingredients_text_de,ingredients_text,serving_quantity';
+const offCache = new Map();
+async function offDirect(body) {
+  let url;
+  if (body.action === 'product') {
+    const code = String(body.code || '').replace(/\D/g, '');
+    url = `https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=${OFF_FIELDS}&app_name=Motivator`;
+  } else {
+    url = 'https://world.openfoodfacts.org/cgi/search.pl?' + new URLSearchParams({
+      search_terms: String(body.q || '').trim().slice(0, 80), search_simple: '1', action: 'process', json: '1',
+      page_size: '20', lc: 'de', fields: OFF_FIELDS, sort_by: 'unique_scans_n', app_name: 'Motivator'
+    });
+  }
+  if (offCache.has(url)) return offCache.get(url);
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (res.status === 429 || res.status === 503) {
+    const e = new Error('Open Food Facts ist gerade ausgelastet – in einer Minute nochmal.');
+    e.busy = true;
+    throw e;
+  }
+  if (!res.ok) throw new Error(`Open Food Facts antwortet nicht (${res.status})`);
+  const data = await res.json();
+  const out = body.action === 'product' ? { product: data && data.status === 1 ? data.product : null } : { products: (data && data.products) || [] };
+  offCache.set(url, out);
+  return out;
+}
+
+// Open Food Facts: direkt, sonst über die Server-Funktion „openfoodfacts“ (setzt den Namen der App, den OFF verlangt)
 export async function offRequest(body) {
   if (isDemo) {
     const demoP = { code: '4000417025005', product_name_de: 'Harzer Käse (Demo)', brands: 'Demo-Molkerei', serving_quantity: 40, ingredients_text_de: 'Sauermilchquark, Speisesalz, Kümmel', nutriments: { 'energy-kcal_100g': 115, proteins_100g: 27, fat_100g: 0.5, carbohydrates_100g: 0.1, salt_100g: 4.5, calcium_100g: 0.125 } };
     return body.action === 'product' ? { product: { ...demoP, code: body.code } } : { products: [demoP] };
   }
+  // Erst direkt vom Gerät (eigenes Kontingent bei OFF), dann über die Server-Funktion
+  let direct = null;
+  try {
+    return await offDirect(body);
+  } catch (err) {
+    direct = err;
+    console.warn('Open Food Facts direkt:', err);
+  }
   const { data, error } = await client.functions.invoke('openfoodfacts', { body });
   if (error) {
+    if (direct && direct.busy) throw direct;
     let detail = '';
     try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
     if (error.name === 'FunctionsFetchError' || (error.context && error.context.status === 404)) throw new Error('Die Server-Funktion „openfoodfacts“ fehlt noch (einspielen).');
