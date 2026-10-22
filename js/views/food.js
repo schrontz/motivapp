@@ -144,17 +144,18 @@ export function foodForm(S, T) {
   const results = S.foodResults
     ? (S.foodResults.length
       ? S.foodResults.map((f, i) => `<button type="button" class="food-hit" data-action="food-add" data-idx="${i}"><span>${esc(f.name)}</span><span class="small muted">${Math.round(Number(f.kcal) || 0)} kcal/100 g</span></button>`).join('')
-      : `<p class="small muted" style="padding: 10px 12px">${S.hasBls ? 'Im Bundeslebensmittelschlüssel nichts gefunden.' : 'Die Lebensmittel-Daten fehlen noch (CSV importieren).'}</p>`)
+      : `<p class="small muted" style="padding: 10px 12px">${S.hasBls ? 'Hier nichts gefunden – oben auf „Marken (OFF)“ umschalten oder anders schreiben.' : 'Die Lebensmittel-Daten fehlen noch (BLS einspielen).'}</p>`)
     : '';
   // Open Food Facts: Markenprodukte – auf Knopfdruck, wenn der BLS nicht reicht
   const off = S.offResults
     ? (S.offResults.length
       ? S.offResults.map((f, i) => `<button type="button" class="food-hit" data-action="food-add-off" data-idx="${i}"><span>${esc(f.name)}${f.brand ? ` <span class="muted">· ${esc(f.brand)}</span>` : ''}</span><span class="small muted">${f.kcal == null ? '' : `${Math.round(f.kcal)} kcal`}</span></button>`).join('')
-      : '<p class="small muted" style="padding: 10px 12px">Auch bei Open Food Facts nichts gefunden – anders schreiben oder Strichcode scannen.</p>')
+      : '<p class="small muted" style="padding: 10px 12px">Bei Open Food Facts nichts gefunden – anders schreiben, Strichcode scannen oder auf „Lebensmittel (BLS)“ umschalten.</p>')
     : '';
-  const offBtn = S.foodResults && !S.offResults
-    ? `<button type="button" class="link-btn" data-action="food-off" ${S.offSearching ? 'disabled' : ''}>${S.offSearching ? 'Frage Open Food Facts …' : 'Nicht dabei? Bei Open Food Facts suchen (Markenprodukte)'}</button>`
-    : '';
+  const src = S.foodSource === 'off' ? 'off' : 'bls';
+  const busy = S.foodSearching || S.offSearching;
+  const sources = [['bls', 'Lebensmittel (BLS)'], ['off', 'Marken (OFF)']].map(([v, l]) => `<label><input type="radio" name="fsrc" value="${v}"${src === v ? ' checked' : ''} data-action="food-source"><span>${l}</span></label>`).join('');
+  const shown = src === 'off' ? off : results;
   const items = d.items.map((it, i) => `<div class="food-item"><span style="flex: 1; min-width: 0"><b>${esc(it.name)}</b></span>
       <button type="button" class="mini-round small" data-action="food-grams" data-idx="${i}" data-id="-1" aria-label="Weniger">−</button>
       <b class="food-g">${it.grams} g</b>
@@ -167,7 +168,7 @@ export function foodForm(S, T) {
     const done = todays.some((m) => m.fav_id === f.id);
     return `<button type="button" class="chip food-fav" data-action="food-fav" data-id="${esc(f.id)}" aria-pressed="${done}">${done ? '✓ ' : ''}${esc(f.name)}</button>`;
   }).join('');
-  const favBlock = d.editId || d.items.length || S.foodResults ? '' : `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+  const favBlock = d.editId || d.items.length || S.foodResults || S.offResults ? '' : `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <h2 style="font-size: 17px">Wie immer – ein Tipp</h2>
       ${favs ? `<div class="food-chips">${favs}</div>` : '<p class="small muted">Noch keine Favoriten. Unten beim Eintragen „Als Favorit merken“ ankreuzen – dann steht die Mahlzeit künftig hier.</p>'}
     </section>`;
@@ -178,13 +179,12 @@ export function foodForm(S, T) {
       <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : ((S.mealFavorites || []).length && !d.editId ? 'Etwas anderes?' : 'Was hast du gegessen?')}</h2>
       <form class="goal-search" data-form="food-search" role="search">
         <input class="input" type="search" name="q" value="${esc(S.foodQuery)}" placeholder="Gericht oder Zutat, z. B. Flammkuchen" aria-label="Gericht oder Zutat suchen" enterkeyhint="search" autocomplete="off">
-        <button type="submit" class="btn" ${S.foodSearching ? 'disabled' : ''}>${S.foodSearching ? '…' : 'Suchen'}</button>
+        <button type="submit" class="btn" ${busy ? 'disabled' : ''}>${busy ? '…' : 'Suchen'}</button>
         <button type="button" class="btn ghost scan-btn" data-action="food-scan" aria-label="Strichcode scannen">${BARCODE}</button>
       </form>
-      ${results ? `<div class="food-hits">${results}</div>` : ''}
-      ${offBtn}
-      ${off ? `<div class="small muted" style="font-weight: 600">Open Food Facts</div><div class="food-hits">${off}</div>` : ''}
-      ${items ? `<div class="food-items">${items}</div>` : (results ? '' : '<p class="small muted">Für Auswärts reicht oft ein ganzes Gericht – z. B. „Flammkuchen“, „Döner“, „Pizza“. Treffer antippen, dann steht es unten drin.</p>')}
+      <div class="seg small-seg" role="radiogroup" aria-label="Wo suchen?">${sources}</div>
+      ${shown ? `<div class="food-hits">${shown}</div>` : ''}
+      ${items ? `<div class="food-items">${items}</div>` : (shown ? '' : `<p class="small muted">${src === 'off' ? 'Markenprodukte aus dem Supermarkt – oder gleich den Strichcode scannen.' : 'Grundnahrungsmittel und ganze Gerichte – für Auswärts reicht oft z. B. „Flammkuchen“, „Döner“, „Pizza“.'} Treffer antippen, dann steht es unten drin.</p>`)}
       ${d.items.length || d.name || d.plants.length || d.showName ? `<label class="field"><span>Name des Eintrags</span><input class="input" name="fname" value="${esc(d.name)}" placeholder="z. B. Flammkuchen" data-action="food-name" autocomplete="off"></label>` : ''}
     </section>
     <section class="card pad" style="display: flex; flex-direction: column; gap: 10px">

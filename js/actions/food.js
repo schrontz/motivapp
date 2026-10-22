@@ -61,8 +61,10 @@ async function search(form) {
   return runSearch(String(new FormData(form).get('q') || '').trim());
 }
 
+// Suche in der gewählten Quelle: BLS (Lebensmittel und Gerichte) oder Open Food Facts (Markenprodukte)
 async function runSearch(q) {
   if (!q) { resetSearch(); render(); return; }
+  if (S.foodSource === 'off') return offSearch(q);
   S.foodQuery = q;
   S.foodSearching = true;
   render();
@@ -96,9 +98,9 @@ const addItem = (idx) => addFood(S.foodResults && S.foodResults[Number(idx)]);
 const addOff = (idx) => addFood(S.offResults && S.offResults[Number(idx)]);
 
 // Open Food Facts: Suche mit dem gleichen Begriff
-async function offSearch() {
-  const q = S.foodQuery;
+async function offSearch(q) {
   if (!q || S.offSearching) return;
+  S.foodQuery = q;
   S.offSearching = true;
   render();
   try {
@@ -319,7 +321,7 @@ export const clicks = {
   'food-undo': undo,
   'food-add': ({ el }) => addItem(el.dataset.idx),
   'food-add-off': ({ el }) => addOff(el.dataset.idx),
-  'food-off': offSearch,
+
   'food-scan': openScanner,
   'scan-close': () => { closeScanner(); render(); },
   'food-grams': ({ el, id }) => grams(el.dataset.idx, id),
@@ -341,6 +343,13 @@ export const clicks = {
 };
 
 export const changes = {
+  // Quelle umschalten: steht schon ein Suchbegriff da, gleich in der anderen Quelle suchen
+  'food-source': ({ el }) => {
+    S.foodSource = el.value === 'off' ? 'off' : 'bls';
+    local.set('foodSource', S.foodSource);
+    const q = S.foodQuery || String(document.querySelector('[data-form="food-search"] [name="q"]')?.value || '').trim();
+    if (q) runSearch(q); else render();
+  },
   // Name eingetippt, aber noch nichts gesucht? Dann gleich danach suchen – so findet man es auch über dieses Feld
   'food-name': ({ el }) => {
     const d = S.foodDraft;
