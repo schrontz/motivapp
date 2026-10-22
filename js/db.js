@@ -141,23 +141,19 @@ export async function offRequest(body) {
     const demoP = { code: '4000417025005', product_name_de: 'Harzer Käse (Demo)', brands: 'Demo-Molkerei', serving_quantity: 40, ingredients_text_de: 'Sauermilchquark, Speisesalz, Kümmel', nutriments: { 'energy-kcal_100g': 115, proteins_100g: 27, fat_100g: 0.5, carbohydrates_100g: 0.1, salt_100g: 4.5, calcium_100g: 0.125 } };
     return body.action === 'product' ? { product: { ...demoP, code: body.code } } : { products: [demoP] };
   }
-  // Erst direkt vom Gerät (eigenes Kontingent bei OFF), dann über die Server-Funktion
-  let direct = null;
+  // Erst über die Server-Funktion (mit OFF-Konto, falls als Secret hinterlegt), sonst direkt vom Gerät
+  const { data, error } = await client.functions.invoke('openfoodfacts', { body });
+  if (!error) return data;
+  let detail = '';
+  try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
+  const missing = error.name === 'FunctionsFetchError' || (error.context && error.context.status === 404);
   try {
     return await offDirect(body);
   } catch (err) {
-    direct = err;
     console.warn('Open Food Facts direkt:', err);
+    if (missing) throw new Error('Die Server-Funktion „openfoodfacts“ fehlt noch (einspielen).');
+    throw new Error(detail || err.message || 'Open Food Facts nicht erreichbar');
   }
-  const { data, error } = await client.functions.invoke('openfoodfacts', { body });
-  if (error) {
-    if (direct && direct.busy) throw direct;
-    let detail = '';
-    try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
-    if (error.name === 'FunctionsFetchError' || (error.context && error.context.status === 404)) throw new Error('Die Server-Funktion „openfoodfacts“ fehlt noch (einspielen).');
-    throw new Error(detail || error.message || 'Open Food Facts nicht erreichbar');
-  }
-  return data;
 }
 
 export async function saveMeal(meal) {
