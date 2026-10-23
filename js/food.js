@@ -195,6 +195,7 @@ export function week(meals, T, weightKg, start = weekStart(T)) {
     legumes: legumeMeals(inWeek), legumesPrev: legumeMeals(prev),
     proteinAvg: logged.length && totals.protein != null ? Math.round(totals.protein / logged.length) : null,
     percent: logged.length ? percentOf(avg, weightKg) : [],
+    avg: logged.length ? avg : null,
     home: inWeek.filter((m) => m.home).length, out: inWeek.filter((m) => !m.home).length
   };
 }
@@ -283,4 +284,26 @@ export function offToFood(p) {
   const sq = Number(p.serving_quantity);
   food.serving = Number.isFinite(sq) && sq > 0 && sq <= 1000 ? Math.round(sq) : null;
   return food;
+}
+
+// ───────────── Kohlenhydrate, Eiweiß, Fett ─────────────
+// Aufteilung nach Energie (4 / 4 / 9 kcal je g) – ohne Wertung, nur wie sich die Mahlzeit zusammensetzt
+export const MACROS = [
+  { key: 'carbs', label: 'Kohlenhydrate', kcalPerG: 4 },
+  { key: 'protein', label: 'Eiweiß', kcalPerG: 4 },
+  { key: 'fat', label: 'Fett', kcalPerG: 9 }
+];
+export function macroSplit(nutr) {
+  if (!nutr) return null;
+  const parts = MACROS.map((m) => {
+    const g = Number(nutr[m.key]);
+    return { ...m, g: Number.isFinite(g) && g > 0 ? g : 0 };
+  });
+  const total = parts.reduce((s, p) => s + p.g * p.kcalPerG, 0);
+  if (!(total > 0)) return null;
+  const out = parts.map((p) => ({ ...p, g: Math.round(p.g), pct: Math.round(((p.g * p.kcalPerG) / total) * 100) }));
+  // Rundung: Summe genau 100 (Rest beim größten Anteil)
+  const diff = 100 - out.reduce((s, p) => s + p.pct, 0);
+  if (diff) out.reduce((a, b) => (b.pct > a.pct ? b : a)).pct += diff;
+  return out;
 }

@@ -1,7 +1,7 @@
 // Essen: Karte auf der Übersicht, Woche mit Sammelalbum, Eintragen, eine Mahlzeit.
 // Entdecken statt Diät: Pflanzen sammeln, Nährstoffe als Prozent, Kalorien nur klein.
 
-import { PLANTS, PLANT_GROUPS, isLegume, nutrOf, percentOf, dayFood, week, discovery, proteinRef } from '../food.js';
+import { PLANTS, PLANT_GROUPS, isLegume, nutrOf, percentOf, dayFood, week, discovery, proteinRef, macroSplit } from '../food.js';
 import { series } from '../body.js';
 import { WEEKDAYS_SHORT } from '../dates.js';
 import { svg } from '../icons.js';
@@ -48,6 +48,35 @@ export function foodCard(S, T) {
   </section>`;
 }
 
+// ───────────── Ring: Kohlenhydrate, Eiweiß, Fett ─────────────
+// Ohne Wertung – nur die Aufteilung nach Energie. Farben wie in Skillet.
+export function macroRing(nutr, title = 'Zusammensetzung', sub = '') {
+  const m = macroSplit(nutr);
+  if (!m) return '';
+  const size = 112; const sw = 14; const r = (size - sw) / 2; const C = 2 * Math.PI * r; const gap = 3;
+  let off = 0;
+  const segs = m.filter((p) => p.pct > 0).map((p) => {
+    const len = Math.max(0, (p.pct / 100) * C - (m.filter((x) => x.pct > 0).length > 1 ? gap : 0));
+    const el = `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" style="stroke: var(--macro-${p.key})" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"></circle>`;
+    off += (p.pct / 100) * C;
+    return el;
+  }).join('');
+  const kcal = nutr.kcal != null ? Math.round(nutr.kcal) : null;
+  const legend = m.map((p) => `<div class="macro-row"><span class="macro-dot" style="background: var(--macro-${p.key})"></span><span style="flex: 1">${p.label}</span><b>${p.g} g</b><span class="muted macro-pct">${p.pct} %</span></div>`).join('');
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+    <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">${title}</h2>${sub ? `<span class="small muted">${sub}</span>` : ''}</div>
+    <div class="macro">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${m.map((p) => `${p.label} ${p.pct} Prozent`).join(', ')}">
+        <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" style="stroke: var(--border)" stroke-width="${sw}" opacity="0.5"></circle>
+        ${segs}
+        ${kcal != null ? `<text x="${size / 2}" y="${size / 2 + 2}" text-anchor="middle" class="macro-kcal">${kcal}</text><text x="${size / 2}" y="${size / 2 + 18}" text-anchor="middle" class="macro-unit">kcal</text>` : ''}
+      </svg>
+      <div class="macro-legend">${legend}</div>
+    </div>
+    <p class="small muted">Anteil an der Energie – einfach zum Anschauen, ohne richtig oder falsch.</p>
+  </section>`;
+}
+
 // ───────────── Woche ─────────────
 
 function nutrBars(list) {
@@ -82,6 +111,7 @@ export function foodView(S, T) {
       <div class="card"><div class="small muted">Hülsenfrüchte</div><b>${w.legumes} ×</b><div class="small muted">letzte Woche ${w.legumesPrev} ×</div></div>
       <div class="card"><div class="small muted">Eiweiß</div><b>${w.proteinAvg == null ? '–' : `Ø ${w.proteinAvg} g`}</b><div class="small muted">Richtwert ~${proteinRef(kg)} g</div></div>
     </section>
+    ${w.avg ? macroRing(w.avg, 'Zusammensetzung', 'Ø je Tag') : ''}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">Nährstoffe der Woche</h2><span class="small muted">Ø vom Tagesbedarf</span></div>
       ${w.percent.length ? nutrBars(w.percent) : '<p class="small muted">Sobald du etwas einträgst, steht hier, was drinsteckt.</p>'}
@@ -251,6 +281,7 @@ export function mealView(S, T, id) {
       <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">${(m.plants || []).length} ${(m.plants || []).length === 1 ? 'Pflanze' : 'Pflanzen'}</h2><span class="small muted">antippen: Wusstest du …?</span></div>
       ${(m.plants || []).length ? `<div class="food-chips">${m.plants.map((p) => `<button type="button" class="chip" data-action="plant-info" data-id="${esc(p)}">${isLegume(p) ? '🫘 ' : ''}${esc(p)}</button>`).join('')}</div>` : '<p class="small muted">Keine Pflanzen eingetragen.</p>'}
     </section>
+    ${macroRing(m.nutr)}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">Was drinsteckt</h2><span class="small muted">vom Tagesbedarf</span></div>
       ${(m.items || []).length ? nutrBars(pct) : '<p class="small muted">Ohne Zutaten keine Nährwerte – nur Pflanzen gezählt.</p>'}

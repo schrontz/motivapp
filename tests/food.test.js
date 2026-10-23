@@ -105,3 +105,14 @@ test('Open Food Facts → Lebensmittel', () => {
   assert.equal(offToFood({ code: '1', product_name: '' }), null);
   assert.equal(offToFood({ code: '2', product_name: 'X', nutriments: { energy_100g: 418.4 } }).kcal, 100);
 });
+
+import { macroSplit } from '../js/food.js';
+
+test('Ring: Kohlenhydrate, Eiweiß, Fett nach Energie, Summe 100', () => {
+  const m = macroSplit({ carbs: 50, protein: 25, fat: 10 }); // 200 / 100 / 90 kcal
+  assert.deepEqual(m.map((x) => [x.key, x.g, x.pct]), [['carbs', 50, 51], ['protein', 25, 26], ['fat', 10, 23]]);
+  assert.equal(m.reduce((s, x) => s + x.pct, 0), 100);
+  assert.equal(macroSplit({ carbs: 0, protein: 0, fat: 0 }), null);
+  assert.equal(macroSplit(null), null);
+  assert.equal(macroSplit({ protein: 10, carbs: null, fat: null })[1].pct, 100);
+});
