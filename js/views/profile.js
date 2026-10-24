@@ -27,7 +27,7 @@ export function withingsCard(S) {
           </div>
           <p class="hint">Abgleich passiert automatisch, wenn du die App öffnest.</p>`
         : `<p class="hint">Schritte und Trainings deiner Uhr kommen dann automatisch in die App. Du meldest dich dafür einmal bei Withings an und tippst auf „Erlauben“.</p>
-          ${S.ios && S.standalone ? '<p class="hint"><b>iPhone:</b> Die Verbindung bitte einmal in <b>Safari</b> herstellen (motivator-Seite im Browser öffnen, anmelden, hier verbinden) – nicht in der installierten App. Danach gleicht auch die App ab.</p>' : ''}
+          ${S.ios && S.standalone ? '<p class="hint"><b>iPhone:</b> Die Verbindung bitte einmal im <b>Browser</b> herstellen (Chrome oder Safari: Motivator-Seite öffnen, anmelden, hier verbinden) – nicht in der installierten App. Danach gleicht auch die App ab.</p>' : ''}
           <button type="button" class="btn" data-action="withings-connect">Mit Withings verbinden</button>`}
     </div>
   </section>`;
@@ -94,11 +94,11 @@ export function installCard(S) {
       </div>
       ${S.ios
         ? `<ol class="ios-steps">
-            ${S.iosSafari ? '' : '<li>Diese Seite in <b>Safari</b> öffnen (dort klappt es am zuverlässigsten).</li>'}
-            <li>Unten auf <b>Teilen</b> tippen ${svg('M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7', 16)}</li>
+            <li>${S.iosSafari ? 'Unten' : (S.iosChrome ? 'Oben in der Adressleiste' : 'Im Browser')} auf <b>Teilen</b> tippen ${svg('M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7', 16)}</li>
             <li>Nach unten wischen: <b>„Zum Home-Bildschirm“</b></li>
             <li>Oben rechts <b>„Hinzufügen“</b> – fertig.</li>
-          </ol>`
+          </ol>
+          ${S.iosSafari || S.iosChrome ? '' : '<p class="hint">Klappt es hier nicht, die Seite in Safari oder Chrome öffnen.</p>'}`
         : S.canInstall
         ? '<button type="button" class="btn" data-action="install">Motivator installieren</button>'
         : '<p class="hint">Chrome: Menü ⋮ → „App installieren“ (oder „Zum Startbildschirm hinzufügen“ → „Installieren“). Erscheint das nicht, die Seite einmal neu laden und kurz warten.</p>'}
