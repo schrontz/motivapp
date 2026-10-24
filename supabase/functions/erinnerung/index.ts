@@ -10,11 +10,12 @@
 // Keine Secrets nötig: Das Schlüsselpaar (VAPID) erzeugt die Funktion beim ersten Aufruf selbst und legt es
 // in der Tabelle push_keys ab (nur mit Server-Schlüssel lesbar).
 //
-// Welche Gewohnheiten offen sind, entscheidet js/remind.js – dieselbe Datei, die die App benutzt.
-// Sie wird beim Bereitstellen von GitHub Pages geladen: Nach Änderungen daran die Funktion neu bereitstellen.
+// Welche Gewohnheiten offen sind, entscheidet js/remind.js – dieselbe Logik wie in der App.
+// Sie steht als Kopie ganz unten in dieser Datei (Supabase erlaubt keine Importe von GitHub Pages).
+// Nach Änderungen an js/remind.js: node supabase/functions/erinnerung/einbetten.mjs, dann neu bereitstellen.
+// @ts-nocheck
 
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
-import { openForReminder, reminderText, isDue, zonedNow } from 'https://schrontz.github.io/motivapp/js/remind.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -238,3 +239,257 @@ export async function handle(req: Request, deps: { fetch?: typeof fetch; db?: an
 if (typeof Deno !== 'undefined' && Deno.serve && !(globalThis as any).__MOTIVATOR_TEST__) {
   Deno.serve((req) => handle(req));
 }
+
+// ── BEGIN Kopie von js/remind.js (nicht hier ändern – einbetten.mjs) ──
+function toDay(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function parseDay(day) {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d, 12);
+}
+function addDays(day, n) {
+  const dt = parseDay(day);
+  dt.setDate(dt.getDate() + n);
+  return toDay(dt);
+}
+function weekday(day) {
+  const wd = parseDay(day).getDay();
+  return wd === 0 ? 7 : wd;
+}
+function weekStart(day) {
+  return addDays(day, 1 - weekday(day));
+}
+function monthStart(day) {
+  return day.slice(0, 8) + "01";
+}
+function daysInMonth(day) {
+  const dt = parseDay(day);
+  return new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+}
+function* eachDay(from, to) {
+  for (let d = from; d <= to; d = addDays(d, 1)) yield d;
+}
+
+function isHit(log) {
+  return !!log && (log.status === "done" || log.status === "mini");
+}
+function indexLogs(logs) {
+  const idx = /* @__PURE__ */ new Map();
+  for (const l of logs) {
+    if (!idx.has(l.habit_id)) idx.set(l.habit_id, /* @__PURE__ */ new Map());
+    idx.get(l.habit_id).set(l.day, l);
+  }
+  return idx;
+}
+function logOf(idx, habitId, day) {
+  const m = idx.get(habitId);
+  return m ? m.get(day) || null : null;
+}
+function isPaused(habit, day, pauses) {
+  for (const p of pauses) {
+    if ((p.habit_id == null || p.habit_id === habit.id) && p.start_day <= day && day <= p.end_day) return true;
+  }
+  return false;
+}
+function isPeriodic(habit) {
+  return habit.schedule === "per_week" || habit.schedule === "per_month";
+}
+function periodTarget(h) {
+  return h.schedule_count || 1;
+}
+function periodMin(h) {
+  const t = periodTarget(h);
+  return h.schedule_min && h.schedule_min < t ? h.schedule_min : t;
+}
+function hasMiniPeriod(h) {
+  return isPeriodic(h) && periodMin(h) < periodTarget(h);
+}
+function miniPeriodName(h) {
+  return h.schedule === "per_month" ? "Mini-Monat" : "Mini-Woche";
+}
+function periodNeeds(h, from, to, pauses) {
+  let length = 0;
+  let active = 0;
+  for (const d of eachDay(from, to)) {
+    length += 1;
+    if (d >= h.start_day && !isPaused(h, d, pauses)) active += 1;
+  }
+  const scale = length ? active / length : 1;
+  const target = active === 0 ? 0 : Math.max(1, Math.ceil(periodTarget(h) * scale - 1e-9));
+  const min = active === 0 ? 0 : Math.max(1, Math.min(target, Math.ceil(periodMin(h) * scale - 1e-9)));
+  return { target, min, active, length };
+}
+function periodState(h, n, needs = { target: periodTarget(h), min: periodMin(h) }) {
+  if (n >= needs.target) return "goal";
+  if (hasMiniPeriod(h) && n >= needs.min) return "mini";
+  return "open";
+}
+function isDueOn(habit, day) {
+  if (day < habit.start_day) return false;
+  if (habit.schedule === "daily") return true;
+  if (habit.schedule === "weekdays") return (habit.schedule_days || []).includes(weekday(day));
+  return false;
+}
+function periodBounds(habit, day) {
+  if (habit.schedule === "per_week") return [weekStart(day), addDays(weekStart(day), 6)];
+  const start = monthStart(day);
+  return [start, addDays(start, daysInMonth(day) - 1)];
+}
+function periodHits(habit, idx, day, { before = false } = {}) {
+  const [from, to] = periodBounds(habit, day);
+  const m = idx.get(habit.id);
+  if (!m) return 0;
+  let n = 0;
+  for (const [d, log] of m) {
+    if (d < from || d > to || d < habit.start_day) continue;
+    if (before && d >= day) continue;
+    if (isHit(log)) n += 1;
+  }
+  return n;
+}
+function stateOf(log) {
+  if (!log) return "open";
+  return log.status;
+}
+function todayItems(habits, idx, pauses, day) {
+  const items = [];
+  for (const h of habits) {
+    if (h.archived || day < h.start_day) continue;
+    const log = logOf(idx, h.id, day);
+    const paused = isPaused(h, day, pauses);
+    let counted = false;
+    let sub = null;
+    let period = null;
+    if (isPeriodic(h)) {
+      const [from, to] = periodBounds(h, day);
+      const needs = periodNeeds(h, from, to, pauses);
+      const target = needs.target;
+      const min = needs.min;
+      const before = periodHits(h, idx, day, { before: true });
+      const word = h.schedule === "per_week" ? "diese Woche" : "diesen Monat";
+      const n = before + (isHit(log) ? 1 : 0);
+      const state = periodState(h, n, needs);
+      sub = `${word} ${n} von ${target}`;
+      if (state === "goal") sub += " \xB7 Ziel erreicht";
+      else if (state === "mini") sub += ` \xB7 noch ${target - n} bis zum Ziel`;
+      else if (hasMiniPeriod(h)) sub += ` \xB7 noch ${min - n} bis zur ${miniPeriodName(h)}`;
+      counted = !paused && (isHit(log) || before < min);
+      period = { n, target, min, state };
+    } else {
+      if (!isDueOn(h, day)) continue;
+      counted = !paused;
+    }
+    items.push({ habit: h, log, state: stateOf(log), hit: isHit(log), counted, paused, sub, period });
+  }
+  return items;
+}
+
+var DEFAULT_TIME = 20 * 60;
+var MIN_USUAL = 5;
+var USUAL_DAYS = 14;
+var isAuto = (h) => !!h.auto_metric || Array.isArray(h.auto_categories) && h.auto_categories.length > 0;
+var remindable = (h) => !h.archived && !isAuto(h) && h.remind !== false;
+var hasMini = (h) => !!(h.mini_text || h.mini_value != null);
+function allPaused(pauses, day) {
+  return pauses.some((p) => p.habit_id == null && p.start_day <= day && day <= p.end_day);
+}
+function periodEnd(h, day) {
+  if (h.schedule === "per_week") return addDays(weekStart(day), 6);
+  return addDays(monthStart(day), daysInMonth(day) - 1);
+}
+function openForReminder(habits, logs, pauses, day) {
+  if (allPaused(pauses, day)) return [];
+  const idx = indexLogs(logs);
+  const out = [];
+  for (const it of todayItems(habits.filter(remindable), idx, pauses, day)) {
+    const h = it.habit;
+    if (it.paused || it.hit) continue;
+    if (!isPeriodic(h)) {
+      out.push({ habit: h, name: h.name });
+      continue;
+    }
+    const need = it.period.min - it.period.n;
+    if (need <= 0) continue;
+    let free = 0;
+    for (const d of eachDay(day, periodEnd(h, day))) if (!isPaused(h, d, pauses)) free += 1;
+    if (free > need) continue;
+    out.push({ habit: h, name: h.name, need, word: h.schedule === "per_week" ? "diese Woche" : "diesen Monat" });
+  }
+  return out;
+}
+var listNames = (names) => {
+  if (names.length <= 4) return names.join(", ");
+  return `${names.slice(0, 3).join(", ")} und ${names.length - 3} weitere`;
+};
+function reminderText(open) {
+  if (!open.length) return null;
+  const daily = open.filter((o) => !o.need);
+  const periodic = open.filter((o) => o.need);
+  const parts = [];
+  if (daily.length) parts.push(listNames(daily.map((o) => o.name)) + (periodic.length ? " heute" : ""));
+  for (const o of periodic) parts.push(`${o.name} \u2013 noch ${o.need}\xD7 ${o.word}`);
+  let body = parts.join(" \xB7 ");
+  if (!/[.!?]$/.test(body)) body += ".";
+  if (open.some((o) => hasMini(o.habit))) body += " Mini z\xE4hlt auch \u{1F642}";
+  return { title: periodic.length ? "Noch offen" : "Noch offen heute", body };
+}
+function timeText(min) {
+  const m = (Math.round(min) % 1440 + 1440) % 1440;
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+}
+function parseTime(text) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(text || "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mm = Number(m[2]);
+  if (h > 23 || mm > 59) return null;
+  return h * 60 + mm;
+}
+function isDue(remindAt, nowMin, lastDay, today) {
+  if (remindAt == null || lastDay === today) return false;
+  return nowMin >= remindAt && nowMin < remindAt + 180;
+}
+function usualTime(logs, habitId, today, localOf = browserLocal) {
+  const from = addDays(today, -(USUAL_DAYS - 1));
+  const mins = [];
+  for (const l of logs) {
+    if (l.habit_id !== habitId || !l.created_at || l.source) continue;
+    if (l.day < from || l.day > today) continue;
+    if (l.status !== "done" && l.status !== "mini") continue;
+    const at = localOf(l.created_at);
+    if (!at || at.day !== l.day) continue;
+    mins.push(at.min);
+  }
+  if (mins.length < MIN_USUAL) return { n: mins.length, min: null };
+  mins.sort((a, b) => a - b);
+  const mid = Math.floor(mins.length / 2);
+  const median = mins.length % 2 ? mins[mid] : (mins[mid - 1] + mins[mid]) / 2;
+  return { n: mins.length, min: Math.round(median / 10) * 10 };
+}
+function browserLocal(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { day, min: d.getHours() * 60 + d.getMinutes() };
+}
+function zonedNow(date, tz) {
+  try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz || "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(date).map((p) => [p.type, p.value]));
+    return { day: `${parts.year}-${parts.month}-${parts.day}`, min: Number(parts.hour) * 60 + Number(parts.minute) };
+  } catch (_) {
+    return zonedNow(date, "Europe/Berlin");
+  }
+}
+// ── END Kopie von js/remind.js ──
