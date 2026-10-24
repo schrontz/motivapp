@@ -479,6 +479,34 @@ export async function deleteCategory(id) {
   check(await client.from('categories').delete().eq('id', id));
 }
 
+// ───────────── Erinnerung (Web Push) ─────────────
+
+export async function remindRequest(action) {
+  if (isDemo) return action === 'key' ? { key: 'demo' } : { devices: 1, ok: 1, errors: [] };
+  const { data, error } = await client.functions.invoke('erinnerung', { body: { action } });
+  if (!error) return data;
+  let detail = '';
+  try { detail = (await error.context.json()).error || ''; } catch { /* egal */ }
+  if (error.name === 'FunctionsFetchError' || (error.context && error.context.status === 404)) throw new Error('Die Server-Funktion „erinnerung“ fehlt noch (einspielen).');
+  throw new Error(detail || error.message || 'Erinnerung: Server nicht erreichbar');
+}
+
+export async function savePushSub(sub, device) {
+  if (isDemo) return;
+  const row = { endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, device };
+  check(await client.from('push_subscriptions').upsert(row, { onConflict: 'endpoint' }));
+}
+
+export async function deletePushSub(endpoint) {
+  if (isDemo) return;
+  check(await client.from('push_subscriptions').delete().eq('endpoint', endpoint));
+}
+
+export async function setHabitRemind(id, on) {
+  if (isDemo) return;
+  check(await client.from('habits').update({ remind: on }).eq('id', id));
+}
+
 export async function updateProfile(id, patch) {
   if (isDemo) return;
   check(await client.from('profiles').update(patch).eq('id', id));
@@ -541,6 +569,9 @@ const demo = (() => {
   }
   logs.push({ habit_id: 'h-skin', day: t, status: 'done' });
   logs.push({ habit_id: 'h-duo', day: t, status: 'mini' });
+  // Wann abgehakt? Hautpflege morgens, Duolingo abends, Liegestütze nachmittags (für „meist gegen“)
+  const clock = { 'h-skin': 7, 'h-duo': 21, 'h-push': 17, 'h-brain': 12 };
+  logs.forEach((l, i) => { if (clock[l.habit_id] != null) l.created_at = new Date(`${l.day}T${String(clock[l.habit_id]).padStart(2, '0')}:${String(10 + (i * 7) % 40).padStart(2, '0')}:00`).toISOString(); });
   const pauses = [{ id: 'p1', habit_id: null, start_day: addDays(t, -20), end_day: addDays(t, -18) }];
   // Withings-Beispieldaten: Schritte täglich, Krafttraining Mo/Mi/Fr (+ heute früh), Spaziergänge
   const activity = [];
@@ -643,7 +674,7 @@ const demo = (() => {
   add(0, '08:05', breakfast);
   return {
     body, sleep, heart, meals, mealFavorites,
-    profile: { id: 'demo', display_name: 'Jan', travel_queue: [], travel_from: null, modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol', 'essen'], tiles: ['steps', 'training', 'body'] },
+    profile: { id: 'demo', display_name: 'Jan', travel_queue: [], travel_from: null, remind_on: true, remind_at: 1200, remind_tz: 'Europe/Berlin', remind_last: null, modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol', 'essen'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }

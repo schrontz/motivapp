@@ -1,11 +1,11 @@
 // Service Worker: App funktioniert auch bei wackeligem Netz.
 // Strategie: erst Netz (damit Updates sofort ankommen), bei Fehler der letzte Stand aus dem Cache.
-const CACHE = 'motivator-v47';
+const CACHE = 'motivator-v48';
 const SHARE = 'motivator-share'; // geteilte Dateien, bis die App sie abholt
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/core.js', './js/views.js', './js/stats.js', './js/dates.js', './js/db.js', './js/icons.js',
-  './js/config.js', './js/auto.js', './js/strength.js', './js/body.js', './js/distance.js', './js/map.js', './js/reduce.js', './js/pulse.js', './js/alcohol.js', './js/views/alcohol.js', './js/actions/alcohol.js', './js/food.js', './js/views/food.js', './js/actions/food.js', './js/actions/reduce.js', './js/actions/body.js', './js/actions/distance.js',
+  './js/config.js', './js/auto.js', './js/strength.js', './js/body.js', './js/distance.js', './js/map.js', './js/reduce.js', './js/pulse.js', './js/alcohol.js', './js/views/alcohol.js', './js/actions/alcohol.js', './js/food.js', './js/views/food.js', './js/actions/food.js', './js/remind.js', './js/views/remind.js', './js/actions/remind.js', './js/actions/reduce.js', './js/actions/body.js', './js/actions/distance.js',
   './js/actions/habits.js', './js/actions/imports.js', './js/actions/profile.js', './js/actions/strength.js',
   './js/actions/withings.js', './js/views/body.js', './js/views/distance.js', './js/views/reduce.js', './js/views/habits.js', './js/views/imports.js',
   './js/views/overview.js', './js/views/profile.js', './js/views/strength.js', './js/views/training.js',
@@ -78,4 +78,28 @@ self.addEventListener('fetch', (e) => {
       return res;
     }).catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
   );
+});
+
+// ───────────── Erinnerung (Web Push) ─────────────
+// Die Edge Function „erinnerung“ schickt { title, body, url, tag }.
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch (_) { m = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Motivator', {
+    body: m.body || 'Schau mal kurz rein.',
+    icon: './icons/icon-192.png',
+    tag: m.tag || 'erinnerung', // eine neue ersetzt die alte, statt sich zu stapeln
+    data: { url: m.url || './' }
+  }));
+});
+
+// Antippen: offene App nach vorne holen, sonst öffnen
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.location).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    if (open) return open.focus();
+    return self.clients.openWindow(url);
+  }));
 });

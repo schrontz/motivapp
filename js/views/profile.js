@@ -4,6 +4,7 @@ import { APP_VERSION } from '../config.js';
 import { reduceProfileCard } from './reduce.js';
 import { alcoholProfileCard } from './alcohol.js';
 import { foodProfileCard } from './food.js';
+import { remindProfileCard } from './remind.js';
 import { svg, UI_ICONS, COLORS } from '../icons.js';
 import { ago, alphaOn, bodyOn, esc, nav, shortDate } from './ui.js';
 
@@ -131,6 +132,7 @@ export function profile(S, email) {
         </form>
       </section>
       ${installCard(S)}
+      ${remindProfileCard(S)}
       ${withingsCard(S)}
       ${alphaCard(S)}
       ${bodyCard(S)}

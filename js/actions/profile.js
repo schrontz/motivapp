@@ -92,7 +92,18 @@ export const clicks = {
     S.canInstall = false;
     render();
   },
-  logout: () => db.signOut()
+  logout: async () => {
+    // Erinnerungen für dieses Gerät abbestellen – sonst kämen sie nach dem Abmelden weiter
+    try {
+      if (!db.isDemo && 'serviceWorker' in navigator && 'PushManager' in window) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = reg && await reg.pushManager.getSubscription();
+        if (sub) { await db.deletePushSub(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
+      }
+    } catch { /* egal – abmelden geht vor */ }
+    S.pushDevice = null;
+    return db.signOut();
+  }
 };
 
 export const changes = {

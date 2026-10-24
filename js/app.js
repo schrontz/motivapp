@@ -16,9 +16,10 @@ import * as distance from './actions/distance.js';
 import * as reduce from './actions/reduce.js';
 import * as alcohol from './actions/alcohol.js';
 import * as food from './actions/food.js';
+import * as remind from './actions/remind.js';
 import { mountDistanceMap, unmountDistanceMap } from './map.js';
 
-const MODULES = [habits, withings, strength, imports, body, profile, distance, reduce, alcohol, food];
+const MODULES = [habits, withings, strength, imports, body, profile, distance, reduce, alcohol, food, remind];
 const CLICKS = Object.assign({}, ...MODULES.map((m) => m.clicks || {}));
 const CHANGES = Object.assign({}, ...MODULES.map((m) => m.changes || {}));
 const SUBMITS = Object.assign({}, ...MODULES.map((m) => m.submits || {}));
@@ -52,6 +53,7 @@ setRenderer(() => {
     case 'habit': html = V.detail(S, T, r.id); break;
     case 'new': html = V.habitForm(S, T, null); break;
     case 'edit': html = V.habitForm(S, T, r.id); break;
+    case 'erinnerung': html = V.remindView(S, T); break;
     case 'profile': html = V.profile(S, S.session.user && S.session.user.email); break;
     case 'welcome': {
       const last = lastActivityDay(S.logs);
@@ -64,6 +66,7 @@ setRenderer(() => {
   root.innerHTML = html;
   if (r.name === 'distance') { mountDistanceMap(); distance.prefetchWiki(); }
   if (r.name === 'essen-neu') food.mountScanner();
+  if ((r.name === 'erinnerung' || r.name === 'profile') && !S.pushDevice) remind.checkDevice();
   if (S.sheet) {
     const input = document.getElementById('sheet-val');
     if (input && S.sheet.focus) { input.focus(); input.select(); S.sheet.focus = false; }

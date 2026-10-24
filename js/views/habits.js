@@ -6,6 +6,7 @@ import { svg, habitIcon, HABIT_ICONS, UI_ICONS } from '../icons.js';
 import { habitStats, scheduleText } from '../stats.js';
 import { hintCard, sheet } from './overview.js';
 import { colorOf, esc, fmt, nav, notFound, timeOf } from './ui.js';
+import { usualLine } from './remind.js';
 
 export function detail(S, T, id) {
   const h = S.habits.find((x) => x.id === id);
@@ -32,7 +33,7 @@ export function detail(S, T, id) {
     <div class="wrap">
       <div style="display: flex; align-items: center; gap: 14px; padding: 0 4px">
         <div class="hicon" style="width: 52px; height: 52px; border-radius: 16px; background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon, 26)}</div>
-        <div><h1 style="font-size: 28px">${esc(h.name)}</h1><div class="small muted">${esc(scheduleText(h))}${cat ? ' · ' + esc(cat.name) : ''}${h.mini_text ? ' · Mini: ' + esc(h.mini_text) : ''}</div></div>
+        <div><h1 style="font-size: 28px">${esc(h.name)}</h1><div class="small muted">${esc(scheduleText(h))}${cat ? ' · ' + esc(cat.name) : ''}${h.mini_text ? ' · Mini: ' + esc(h.mini_text) : ''}</div>${usualLine(S, h, T)}</div>
       </div>
       <section class="stat-grid">
         <div class="card stat-hero">
