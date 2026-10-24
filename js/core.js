@@ -96,6 +96,9 @@ S.distStart = local.get('distStart') || 'Frankfurt am Main';
 S.reduceCostBasis = local.get('reduceCostBasis') === 'start' ? 'start' : 'recent';
 S.foodSource = local.get('foodSource') === 'off' ? 'off' : 'bls';
 S.standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// iPhone/iPad (iPadOS meldet sich als Mac mit Touch): kein „Installieren“-Knopf, sondern Safari → Teilen → Zum Home-Bildschirm
+S.ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+S.iosSafari = S.ios && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
 // „Passt so“ beim Muster-Hinweis: erst wieder zeigen, wenn das Muster 4 weitere Zeiträume anhält
 S.hintSeen = (id, count) => {
   const seen = Number(local.get('hint.' + id) || 0);

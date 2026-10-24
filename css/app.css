@@ -537,3 +537,5 @@ button.dest-row:first-child { border-top: 0; }
 .macro-pct { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .macro-kcal { font-size: 24px; font-weight: 700; fill: var(--text); }
 .macro-unit { font-size: 12px; fill: var(--muted); }
+.ios-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.4; }
+.ios-steps svg { vertical-align: -3px; }

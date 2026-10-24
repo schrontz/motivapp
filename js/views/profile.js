@@ -27,6 +27,7 @@ export function withingsCard(S) {
           </div>
           <p class="hint">Abgleich passiert automatisch, wenn du die App öffnest.</p>`
         : `<p class="hint">Schritte und Trainings deiner Uhr kommen dann automatisch in die App. Du meldest dich dafür einmal bei Withings an und tippst auf „Erlauben“.</p>
+          ${S.ios && S.standalone ? '<p class="hint"><b>iPhone:</b> Die Verbindung bitte einmal in <b>Safari</b> herstellen (motivator-Seite im Browser öffnen, anmelden, hier verbinden) – nicht in der installierten App. Danach gleicht auch die App ab.</p>' : ''}
           <button type="button" class="btn" data-action="withings-connect">Mit Withings verbinden</button>`}
     </div>
   </section>`;
@@ -89,9 +90,16 @@ export function installCard(S) {
   return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <div style="display: flex; align-items: center; gap: 12px">
         <img src="icons/icon-192.png" width="44" height="44" alt="" style="border-radius: 12px">
-        <div><div style="font-size: 16px; font-weight: 700">Als App installieren</div><div class="small muted">Eigenes Symbol, ohne Adressleiste – und „Teilen → Motivator“ klappt.</div></div>
+        <div><div style="font-size: 16px; font-weight: 700">Als App installieren</div><div class="small muted">${S.ios ? 'Eigenes Symbol auf dem Home-Bildschirm, ohne Adressleiste.' : 'Eigenes Symbol, ohne Adressleiste – und „Teilen → Motivator“ klappt.'}</div></div>
       </div>
-      ${S.canInstall
+      ${S.ios
+        ? `<ol class="ios-steps">
+            ${S.iosSafari ? '' : '<li>Diese Seite in <b>Safari</b> öffnen (dort klappt es am zuverlässigsten).</li>'}
+            <li>Unten auf <b>Teilen</b> tippen ${svg('M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7', 16)}</li>
+            <li>Nach unten wischen: <b>„Zum Home-Bildschirm“</b></li>
+            <li>Oben rechts <b>„Hinzufügen“</b> – fertig.</li>
+          </ol>`
+        : S.canInstall
         ? '<button type="button" class="btn" data-action="install">Motivator installieren</button>'
         : '<p class="hint">Chrome: Menü ⋮ → „App installieren“ (oder „Zum Startbildschirm hinzufügen“ → „Installieren“). Erscheint das nicht, die Seite einmal neu laden und kurz warten.</p>'}
     </section>`;
