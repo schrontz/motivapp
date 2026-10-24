@@ -1,6 +1,6 @@
 // Service Worker: App funktioniert auch bei wackeligem Netz.
 // Strategie: erst Netz (damit Updates sofort ankommen), bei Fehler der letzte Stand aus dem Cache.
-const CACHE = 'motivator-v48';
+const CACHE = 'motivator-v49';
 const SHARE = 'motivator-share'; // geteilte Dateien, bis die App sie abholt
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
@@ -10,7 +10,7 @@ const SHELL = [
   './js/actions/withings.js', './js/views/body.js', './js/views/distance.js', './js/views/reduce.js', './js/views/habits.js', './js/views/imports.js',
   './js/views/overview.js', './js/views/profile.js', './js/views/strength.js', './js/views/training.js',
   './js/views/ui.js',
-  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
+  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/badge-96.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -87,7 +87,9 @@ self.addEventListener('push', (e) => {
   try { m = e.data ? e.data.json() : {}; } catch (_) { m = { body: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(m.title || 'Motivator', {
     body: m.body || 'Schau mal kurz rein.',
-    icon: './icons/icon-192.png',
+    // absolute Adressen – relative löst nicht jedes Android sauber auf (dann zeigt es nur einen Buchstaben)
+    icon: new URL('icons/icon-192.png', self.registration.scope).href,
+    badge: new URL('icons/badge-96.png', self.registration.scope).href, // kleines Symbol in der Statusleiste: weiß auf transparent
     tag: m.tag || 'erinnerung', // eine neue ersetzt die alte, statt sich zu stapeln
     data: { url: m.url || './' }
   }));
