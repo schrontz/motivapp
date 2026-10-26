@@ -211,6 +211,20 @@ function todayLine(st, T) {
     <div class="small muted" style="display: flex; justify-content: space-between"><span>${esc(st.settings.night_to)}</span><span>${esc(st.settings.night_from)}</span></div>`;
 }
 
+// Rückblick auf die Zähl-Woche: woher der Ausgangswert und der Start-Abstand kommen
+function watchReview(st, T) {
+  const days = Array.from({ length: WATCH_DAYS }, (_, i) => addDays(st.settings.started_on, i));
+  const b = st.base;
+  const start = b.gap ? Math.max(15, Math.round(b.gap / 5) * 5) : null;
+  const first = st.ph.week === 1;
+  const body = `<p class="small muted" style="line-height: 1.45">${shortDate(days[0])} – ${shortDate(days[WATCH_DAYS - 1])}: ${b.count} Zigaretten, also <b style="color: var(--text)">${numTxt(b.perDay, b.perDay % 1 ? 1 : 0)} am Tag</b>${b.gap ? `, im Schnitt alle <b style="color: var(--text)">${b.gap} Min</b> (wach gerechnet)` : ''}.${start ? ` Daraus wurde dein Start-Abstand: <b style="color: var(--text)">${start} Min</b>.` : ''}</p>
+    ${bars(days, st.counts, addDays(days[WATCH_DAYS - 1], 1))}
+    <p class="small muted" style="line-height: 1.45">Das ist dein Ausgangswert – die Linie „am Anfang“ und die Basis fürs Gesparte. Er bleibt, wie er war.</p>`;
+  return first
+    ? `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px"><h2 style="font-size: 17px">Deine Zähl-Woche</h2>${body}</section>`
+    : `<details class="card pad reduce-review"><summary><b style="font-size: 17px">Deine Zähl-Woche</b> <span class="small muted">· ${numTxt(b.perDay, b.perDay % 1 ? 1 : 0)} am Tag</span></summary>${body}</details>`;
+}
+
 export function reduceView(S, T) {
   if (!reduceOn(S)) {
     return `<div class="app">${backBar('#/', 'Übersicht')}<div class="wrap"><p class="hint-card">Schalte „Weniger rauchen“ im Profil ein.</p></div>${nav('overview')}</div>`;
@@ -275,6 +289,7 @@ export function reduceView(S, T) {
       <div class="card"><div class="small muted">Ø 7 Tage</div><b>${st.avg7 == null ? '–' : numTxt(st.avg7, st.avg7 % 1 ? 1 : 0)}</b></div>
       <div class="card"><div class="small muted">am Anfang</div><b>${numTxt(st.base.perDay, st.base.perDay % 1 ? 1 : 0)}</b></div>
     </section>
+    ${st.ph.week === 1 ? watchReview(st, T) : ''}
     <section class="reduce-saved">
       <div style="font-size: 14px; font-weight: 600; opacity: 0.9">Gespart seit Start</div>
       <div class="reduce-euro">${euro(st.saved.euro)}</div>
@@ -298,6 +313,7 @@ export function reduceView(S, T) {
       </div>
       <p class="small muted" style="line-height: 1.45">Zu schnell? Einfach kürzer stellen. Früher geraucht wird nur gezählt – der Abstand beginnt dann neu.</p>
     </section>
+    ${st.ph.week === 1 ? '' : watchReview(st, T)}
     <p class="hint" style="padding: 0 4px">Seit ${shortDate(st.settings.started_on)} · etwa ${cents(st.cost.total)} pro Zigarette · Nachtruhe ${esc(st.settings.night_from)}–${esc(st.settings.night_to)} Uhr</p>
   </div>${nav('overview')}</div>`;
 }

@@ -79,10 +79,17 @@ function queueBlock(S, total) {
   if (!hasQueue(S)) return '';
   const all = withPlaces(S.places);
   const start = city(startOf(S));
+  const n = S.profile.travel_queue.length;
+  const move = (name, i, dir) => {
+    const off = dir < 0 ? i === 0 : i === n - 1;
+    const label = dir < 0 ? 'nach oben' : 'nach unten';
+    return `<button type="button" class="queue-move" data-action="travel-queue-move" data-id="${esc(name)}" data-dir="${dir}"${off ? ' disabled' : ''} aria-label="${esc(name)} ${label}">${svg(dir < 0 ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6', 18, 2.2)}</button>`;
+  };
   const rows = S.profile.travel_queue.map((name, i) => {
     const c = all.find((x) => x.name === name);
     const d = c ? Math.round(km(start, c)) : null;
     return `<div class="queue-row"><span class="queue-n">${i + 1}</span><span style="flex: 1; min-width: 0"><b>${esc(name)}</b>${d != null ? ` <span class="small muted">· ${kmTxt(d)}${d <= total ? ' · schon im Kreis' : ''}</span>` : ''}</span>
+      ${n > 1 ? `<span class="queue-moves">${move(name, i, -1)}${move(name, i, 1)}</span>` : ''}
       <button type="button" class="goal-del" data-action="travel-queue-del" data-id="${esc(name)}" aria-label="${esc(name)} nicht mehr vormerken">${svg('M6 6l12 12M18 6L6 18', 16)}</button></div>`;
   }).join('');
   return `<div class="queue">

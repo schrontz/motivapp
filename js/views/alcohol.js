@@ -78,6 +78,9 @@ export function alcoholSheet(S) {
       <h2 style="font-size: 22px">Getrunken</h2>
       <button type="button" class="goal-del" data-action="alc-close" aria-label="Schließen" style="border: 0">${svg('M6 6l12 12M18 6L6 18', 20)}</button>
     </div>
+    <div class="seg" role="radiogroup" aria-label="Wann?">
+      ${[['today', 'Heute'], ['yesterday', 'Gestern Abend']].map(([id, label]) => `<label><input type="radio" name="alc-when" value="${id}"${(d.when || 'today') === id ? ' checked' : ''} data-action="alc-when"><span>${label}</span></label>`).join('')}
+    </div>
     <div style="display: flex; justify-content: space-between; align-items: center">
       <b style="font-size: 16px">Wie viele Bier?</b>
       <div style="display: flex; align-items: center; gap: 10px">

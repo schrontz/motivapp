@@ -234,6 +234,17 @@ async function clearGoal() {
 export const clicks = {
   'travel-open': () => { S.travelSheet = true; S.travelMode = 'now'; S.travelRegion = null; resetSearch(); render(); },
   'travel-queue-open': () => { S.travelSheet = true; S.travelMode = 'later'; S.travelRegion = null; resetSearch(); render(); },
+  'travel-queue-move': ({ el, id }) => {
+    if (!hasQueue()) return null;
+    const q = S.profile.travel_queue.slice();
+    const i = q.indexOf(id);
+    const j = i + Number(el.dataset.dir);
+    if (i < 0 || j < 0 || j >= q.length) return null;
+    [q[i], q[j]] = [q[j], q[i]];
+    const saving = saveQueue(q);
+    render();
+    return saving;
+  },
   'travel-queue-del': ({ id }) => { if (!hasQueue()) return null; const saving = saveQueue(S.profile.travel_queue.filter((n) => n !== id)); render(); return saving; },
   'travel-celebrate-ok': () => { S.celebrateId = null; render(); },
   'travel-search-clear': () => { resetSearch(); render(); },

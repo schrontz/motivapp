@@ -28,7 +28,10 @@ async function save() {
   const d = S.drinkSheet;
   if (!d) return;
   if (!S.hasAlcoholSchema) { toast('Bitte zuerst das Datenbank-Update 013_alkohol.sql ausführen.'); return; }
-  const ev = newDrink(d.qty, d.tags.slice());
+  // „Gestern Abend“ = gestern 20 Uhr (nachgetragen – zählt für den richtigen Tag)
+  let when = new Date();
+  if (d.when === 'yesterday') { when = new Date(); when.setDate(when.getDate() - 1); when.setHours(20, 0, 0, 0); }
+  const ev = newDrink(d.qty, d.tags.slice(), when);
   S.drinkSheet = null;
   S.reduceEvents = (S.reduceEvents || []).concat(ev);
   S.drinkUndo = ev;
@@ -94,4 +97,8 @@ export const clicks = {
 
 export const submits = {
   'alc-settings': saveForm
+};
+
+export const changes = {
+  'alc-when': ({ el }) => { if (S.drinkSheet) { S.drinkSheet.when = el.value; render(); } }
 };
