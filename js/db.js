@@ -60,8 +60,8 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true, hasFoodSchema: true, hasBls: true };
-  const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce, food] = await Promise.all([
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true, hasFoodSchema: true, hasBls: true, hasFindSchema: true };
+  const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce, food, finds] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
     fetchAll('habits', 'sort_order'),
@@ -72,9 +72,10 @@ export async function loadAll() {
     loadBodyData(),
     loadTravelData(),
     loadReduceData(),
-    loadFoodData()
+    loadFoodData(),
+    loadFindsData()
   ]);
-  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body, ...travel, ...reduce, ...food };
+  return { profile: profiles[0] || null, categories, habits, logs, pauses, ...extra, ...strength, ...body, ...travel, ...reduce, ...food, ...finds };
 }
 
 // Essen (Update 015). Fehlt es noch, läuft die App ohne weiter. hasBls: Lebensmittel-CSV eingespielt?
@@ -181,6 +182,52 @@ export async function deleteFavorite(id) {
 }
 
 // „Weniger von …“ (Update 009). Fehlt es noch, läuft die App ohne weiter.
+// ───────────── Fundstücke (Update 018) ─────────────
+
+export async function loadFindsData() {
+  try {
+    return { finds: await fetchAll('finds', 'created_at'), hasFindSchema: true };
+  } catch (err) {
+    console.warn('Fundstücke nicht verfügbar (Datenbank-Update 018 schon ausgeführt?)', err);
+    return { finds: [], hasFindSchema: false };
+  }
+}
+
+export async function addFind(row) {
+  if (isDemo) return { ...row, id: 'f' + Date.now() };
+  return check(await client.from('finds').insert(row).select().single());
+}
+
+export async function updateFind(id, patch) {
+  if (isDemo) return;
+  check(await client.from('finds').update(patch).eq('id', id));
+}
+
+// Zusammenfassung eines Artikels für ein Fundstück (Demo: ohne Netz)
+export async function findSummary(title) {
+  if (isDemo) return { title, description: DEMO_WIKI[title] || 'ein Artikel aus der Demo', extract: `${title} – in der Demo steht hier die Einleitung des Wikipedia-Artikels.`, content_urls: { desktop: { page: 'https://de.wikipedia.org/wiki/' + encodeURIComponent(title) } } };
+  return wikiSummary(title);
+}
+
+// Links eines Artikels mit Kurzbeschreibung (für „Wohin geht es weiter?“)
+export async function wikiLinks(title) {
+  if (isDemo) return Object.entries(DEMO_WIKI).map(([t, description]) => ({ title: t, description }));
+  const url = 'https://de.wikipedia.org/w/api.php?' + new URLSearchParams({
+    action: 'query', format: 'json', origin: '*', formatversion: '2', redirects: '1',
+    generator: 'links', titles: title, gplnamespace: '0', gpllimit: 'max', prop: 'description|pageprops', ppprop: 'disambiguation'
+  });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Wikipedia nicht erreichbar (' + res.status + ')');
+  const data = await res.json();
+  return ((data.query && data.query.pages) || []).map((p) => ({ ...p, missing: p.missing ? '' : undefined }));
+}
+
+const DEMO_WIKI = {
+  Unteruhldingen: 'Ortsteil am Bodensee mit Pfahlbaumuseum', Jungsteinzeit: 'Epoche der Menschheitsgeschichte',
+  Dendrochronologie: 'Datierungsmethode anhand von Baumringen', Bodensee: 'See im nördlichen Alpenvorland',
+  Bronzezeit: 'Periode der Menschheitsgeschichte', Pfahlbauten: 'auf Pfählen errichtete Gebäude'
+};
+
 export async function loadReduceData() {
   try {
     const [settings, events] = await Promise.all([
@@ -573,6 +620,17 @@ const demo = (() => {
   const clock = { 'h-skin': 7, 'h-duo': 21, 'h-push': 17, 'h-brain': 12 };
   logs.forEach((l, i) => { if (clock[l.habit_id] != null) l.created_at = new Date(`${l.day}T${String(clock[l.habit_id]).padStart(2, '0')}:${String(10 + (i * 7) % 40).padStart(2, '0')}:00`).toISOString(); });
   const pauses = [{ id: 'p1', habit_id: null, start_day: addDays(t, -20), end_day: addDays(t, -18) }];
+  // Fundstücke: ein kleiner Pfad, das nächste ist halb aufgedeckt
+  const find = (i, title, source, origin, description, extra = {}) => ({ id: 'f' + i, title, source, origin, description, extract: `${title} – in der Demo steht hier die Einleitung des Wikipedia-Artikels.`, image: null, url: 'https://de.wikipedia.org/wiki/' + encodeURIComponent(title), base: 0, base_day: addDays(t, -9 + i), found_day: addDays(t, -9 + i), created_day: addDays(t, -10 + i), created_at: new Date(addDays(t, -10 + i) + 'T08:00:00').toISOString(), options: [], chosen: null, ...extra });
+  const finds = [
+    find(1, 'Cefalù', 'start', 'Start · dein erreichtes Reiseziel', 'Stadt an der Nordküste Siziliens'),
+    find(2, 'Dom von Cefalù', 'walk', 'über „Cefalù“', 'normannische Kathedrale'),
+    find(4, 'Gotik', 'walk', 'über „Dom von Cefalù“', 'Stilepoche der europäischen Kunst'),
+    find(5, 'Straßburger Münster', 'walk', 'über „Gotik“', 'Kathedrale im Elsass'),
+    find(7, 'Echter Kümmel', 'branch', 'Essen: zum ersten Mal Kümmel', 'Pflanzenart aus der Familie der Doldenblütler', {
+      options: [{ title: 'Pfahlbauten', description: 'auf Pfählen errichtete Gebäude' }, { title: 'Doldenblütler', description: 'Pflanzenfamilie' }, { title: 'Gewürz', description: 'Pflanzenteile zum Würzen von Speisen' }], chosen: 'Pfahlbauten' }),
+    find(8, 'Pfahlbauten', 'walk', 'über „Echter Kümmel“', 'auf Pfählen errichtete Gebäude', { found_day: null, base: 0, base_day: t })
+  ];
   // Withings-Beispieldaten: Schritte täglich, Krafttraining Mo/Mi/Fr (+ heute früh), Spaziergänge
   const activity = [];
   const workouts = [];
@@ -675,7 +733,7 @@ const demo = (() => {
   return {
     body, sleep, heart, meals, mealFavorites,
     profile: { id: 'demo', display_name: 'Jan', travel_queue: ['Paris', 'Rom', 'Wien'], travel_from: null, remind_on: true, remind_at: 1200, remind_tz: 'Europe/Berlin', remind_last: null, modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol', 'essen'], tiles: ['steps', 'training', 'body'] },
-    categories: cats, habits, logs, pauses,
+    categories: cats, habits, logs, pauses, finds,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }
   };

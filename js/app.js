@@ -17,9 +17,10 @@ import * as reduce from './actions/reduce.js';
 import * as alcohol from './actions/alcohol.js';
 import * as food from './actions/food.js';
 import * as remind from './actions/remind.js';
+import * as finds from './actions/finds.js';
 import { mountDistanceMap, unmountDistanceMap } from './map.js';
 
-const MODULES = [habits, withings, strength, imports, body, profile, distance, reduce, alcohol, food, remind];
+const MODULES = [habits, withings, strength, imports, body, profile, distance, reduce, alcohol, food, remind, finds];
 const CLICKS = Object.assign({}, ...MODULES.map((m) => m.clicks || {}));
 const CHANGES = Object.assign({}, ...MODULES.map((m) => m.changes || {}));
 const SUBMITS = Object.assign({}, ...MODULES.map((m) => m.submits || {}));
@@ -32,6 +33,7 @@ setRenderer(() => {
   const T = today();
   const r = route();
   distance.checkArrival(T);
+  finds.tick(T);
   if (r.name === 'distance') distance.markSeen();
   let html;
   switch (r.name) {
@@ -54,6 +56,8 @@ setRenderer(() => {
     case 'new': html = V.habitForm(S, T, null); break;
     case 'edit': html = V.habitForm(S, T, r.id); break;
     case 'erinnerung': html = V.remindView(S, T); break;
+    case 'fundstuecke': html = V.findsView(S, T); break;
+    case 'fund': finds.ensureDetails((S.finds || []).find((f) => f.id === r.id)); html = V.findView(S, T, r.id); break;
     case 'profile': html = V.profile(S, S.session.user && S.session.user.email); break;
     case 'welcome': {
       const last = lastActivityDay(S.logs);

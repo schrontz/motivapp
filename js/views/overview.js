@@ -9,6 +9,7 @@ import { travelArrivedCard } from './distance.js';
 import { reduceCard } from './reduce.js';
 import { alcoholCard, alcoholSheet } from './alcohol.js';
 import { foodCard } from './food.js';
+import { findCard } from './finds.js';
 import { bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
 export function tilesSection(S, T) {
@@ -182,6 +183,7 @@ export function overview(S, T) {
     <div class="wrap">
       ${travelArrivedCard(S)}
       ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused))}
+      ${findCard(S, T)}
       ${reduceCard(S, T)}
       ${alcoholCard(S, T)}
       ${foodCard(S, T)}

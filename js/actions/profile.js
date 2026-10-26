@@ -41,7 +41,8 @@ function exportData() {
     ruhepuls_naechte: S.sleep,
     ruhepuls_tage: S.heart,
     mahlzeiten: S.meals,
-    essen_favoriten: S.mealFavorites
+    essen_favoriten: S.mealFavorites,
+    fundstuecke: S.finds
     // „Alkoholfrei“ steckt in weniger_einstellungen / weniger_ereignisse (Art „alkohol“)
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
