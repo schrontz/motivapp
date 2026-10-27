@@ -734,7 +734,7 @@ const demo = (() => {
   add(0, '08:05', breakfast);
   return {
     body, sleep, heart, meals, mealFavorites,
-    profile: { id: 'demo', display_name: 'Jan', travel_queue: ['Paris', 'Rom', 'Wien'], travel_from: null, remind_on: true, remind_at: 1200, remind_tz: 'Europe/Berlin', remind_last: null, modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol', 'essen'], tiles: ['steps', 'training', 'body'] },
+    profile: { id: 'demo', display_name: 'Jan', home_order: null, travel_queue: ['Paris', 'Rom', 'Wien'], travel_from: null, remind_on: true, remind_at: 1200, remind_tz: 'Europe/Berlin', remind_last: null, modules: ['habits', 'alpha', 'body', 'weniger', 'alkohol', 'essen'], tiles: ['steps', 'training', 'body'] },
     categories: cats, habits, logs, pauses, finds,
     activity, workouts, dismissals: [], strength, plans, travel: [], places: [], reduceEvents, reduceSettings,
     withings: { connected: true, last_sync_at: new Date().toISOString(), connected_at: addDays(t, -30) + 'T10:00:00Z' }

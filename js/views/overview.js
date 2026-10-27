@@ -10,6 +10,7 @@ import { reduceCard } from './reduce.js';
 import { alcoholCard, alcoholSheet } from './alcohol.js';
 import { foodCard } from './food.js';
 import { findCard } from './finds.js';
+import { homeOrder } from '../home.js';
 import { bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
 export function tilesSection(S, T) {
@@ -174,6 +175,24 @@ export function overview(S, T) {
     list = `<div class="card list">${sortTodayItems(items).map((i) => habitRow(S, i)).join('')}</div>`;
   }
 
+  // Blöcke – Reihenfolge stellt man im Profil ein („Startbildschirm“)
+  const blocks = {
+    rings: () => ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused)),
+    fund: () => findCard(S, T),
+    weniger: () => reduceCard(S, T),
+    alkohol: () => alcoholCard(S, T),
+    essen: () => foodCard(S, T),
+    heute: () => `<div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
+      ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
+      ${list}
+      ${hints}`,
+    gesamt: () => `<section class="total">
+        <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
+        <div><div class="big">${fmt(total)} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
+      </section>`,
+    werte: () => tilesSection(S, T)
+  };
+
   return `<div class="app">
     <header class="top">
       <div><div class="date">${longDate(T)}</div><h1>${greeting()}${name}</h1></div>
@@ -182,20 +201,7 @@ export function overview(S, T) {
     ${chips}
     <div class="wrap">
       ${travelArrivedCard(S)}
-      ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused))}
-      ${findCard(S, T)}
-      ${reduceCard(S, T)}
-      ${alcoholCard(S, T)}
-      ${foodCard(S, T)}
-      <div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
-      ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
-      ${list}
-      ${hints}
-      <section class="total">
-        <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
-        <div><div class="big">${fmt(total)} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
-      </section>
-      ${tilesSection(S, T)}
+      ${homeOrder(S.profile && S.profile.home_order).map((id) => blocks[id]()).join('')}
     </div>
     ${nav('overview')}
     ${alcoholSheet(S)}

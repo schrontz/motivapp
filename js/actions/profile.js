@@ -3,7 +3,8 @@
 import * as db from '../db.js';
 import { S, render, toast, persist } from '../core.js';
 import { today } from '../dates.js';
-import { alphaOn, bodyOn, reduceOn, alcoholOn, foodOn } from '../views.js';
+import { alphaOn, bodyOn, reduceOn, alcoholOn, foodOn, homeVisible } from '../views.js';
+import { moveBlock } from '../home.js';
 
 const TILE_ORDER = ['steps', 'training', 'body', 'active', 'distance'];
 
@@ -92,6 +93,19 @@ export const clicks = {
     installEvent = null;
     S.canInstall = false;
     render();
+  },
+  // Startbildschirm: Block hoch/runter
+  'home-move': ({ el, id }) => {
+    if (!S.profile) return null;
+    S.profile.home_order = moveBlock(S.profile.home_order, homeVisible(S), id, Number(el.dataset.dir));
+    render();
+    return persist(() => db.updateProfile(S.profile.id, { home_order: S.profile.home_order }));
+  },
+  'home-reset': () => {
+    if (!S.profile) return null;
+    S.profile.home_order = null;
+    render();
+    return persist(() => db.updateProfile(S.profile.id, { home_order: null }));
   },
   logout: async () => {
     // Erinnerungen für dieses Gerät abbestellen – sonst kämen sie nach dem Abmelden weiter
