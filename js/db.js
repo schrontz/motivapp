@@ -60,7 +60,7 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true, hasFoodSchema: true, hasBls: true, hasFindSchema: true };
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true, hasFoodSchema: true, hasBls: true, hasFindSchema: true, hasGuessSchema: true };
   const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce, food, finds] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
@@ -186,10 +186,12 @@ export async function deleteFavorite(id) {
 
 export async function loadFindsData() {
   try {
-    return { finds: await fetchAll('finds', 'created_at'), hasFindSchema: true };
+    const finds = await fetchAll('finds', 'created_at');
+    const probe = await client.from('finds').select('guessed_with').limit(1); // Raten (Update 019)
+    return { finds, hasFindSchema: true, hasGuessSchema: !probe.error };
   } catch (err) {
     console.warn('Fundstücke nicht verfügbar (Datenbank-Update 018 schon ausgeführt?)', err);
-    return { finds: [], hasFindSchema: false };
+    return { finds: [], hasFindSchema: false, hasGuessSchema: false };
   }
 }
 

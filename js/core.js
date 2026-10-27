@@ -58,6 +58,8 @@ export const S = {
   drinkUndo: null,
   finds: [],
   hasFindSchema: false,
+  hasGuessSchema: false,
+  findGuessMsg: '',
   findCelebrate: null,
   findReleased: null,
   pushDevice: null,

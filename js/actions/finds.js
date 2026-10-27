@@ -2,8 +2,8 @@
 
 import * as db from '../db.js';
 import { S, render, persist, toast, go } from '../core.js';
-import { letterCount, earnedOn, rollover, revealed, pickOptions, branchCandidates } from '../finds.js';
-import { addDays } from '../dates.js';
+import { letterCount, earnedOn, rollover, revealed, pickOptions, branchCandidates, guessMatches } from '../finds.js';
+import { addDays, today } from '../dates.js';
 import { wikiTitle, activeGoal, reachedGoals } from '../distance.js';
 import { plantWikiTitle } from '../food.js';
 import { categoryName } from '../auto.js';
@@ -178,4 +178,28 @@ export const clicks = {
     await createNext(T);
   },
   'find-celebrate-ok': () => { S.findCelebrate = null; render(); }
+};
+
+export const submits = {
+  // Raten: richtig = Stern, der Artikel kommt trotzdem erst mit allen Buchstaben
+  'find-guess': async (form) => {
+    const open = openFind(S);
+    if (!open) return;
+    if (!S.hasGuessSchema) { toast('Bitte zuerst das Datenbank-Update 019_fundstuecke_raten.sql ausführen.'); return; }
+    const guess = String(new FormData(form).get('guess') || '').trim();
+    if (!guess) return;
+    if (!guessMatches(guess, open.title)) {
+      S.findGuessMsg = `„${guess}“ ist es nicht – rate ruhig weiter, das kostet nichts.`;
+      render();
+      const input = document.querySelector('[data-form="find-guess"] input');
+      if (input) { input.value = ''; input.focus(); }
+      return;
+    }
+    const n = revealedNow(open, today());
+    open.guessed_with = n;
+    S.findGuessMsg = '';
+    render();
+    toast(`⭐ Richtig! Erraten mit ${n} von ${letterCount(open.title)} Buchstaben.`);
+    await persist(() => db.updateFind(open.id, { guessed_with: n }));
+  }
 };

@@ -80,6 +80,7 @@ setRenderer(() => {
 window.addEventListener('hashchange', (e) => {
   try { setLastHash(new URL(e.oldURL).hash); } catch { setLastHash(''); }
   S.sheet = null;
+  S.findGuessMsg = '';
   S.pauseSheet = null;
   S.travelSheet = false;
   S.cityInfo = null;

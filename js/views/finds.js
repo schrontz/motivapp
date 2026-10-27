@@ -8,9 +8,14 @@ import { openFind, foundFinds, latestFound, revealedNow } from '../actions/finds
 const COMPASS = 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM15.5 8.5l-2 5-5 2 2-5z';
 const areaOf = (f) => (f.origin || '').startsWith('Essen') ? 'essen' : (f.origin || '').startsWith('Training') ? 'sport' : (f.origin || '').startsWith('Strecke') ? 'strecke' : null;
 
+const guessed = (f) => f.guessed_with != null;
+const star = (f) => `⭐ Erraten mit ${f.guessed_with} von ${letterCount(f.title)} Buchstaben`;
+
+// Erraten: ganzes Wort sichtbar, noch nicht freigespielte Buchstaben blass – der Fortschritt bleibt erkennbar
 function tiles(f, n) {
-  return `<div class="find-tiles" aria-label="${n} von ${letterCount(f.title)} Buchstaben aufgedeckt">${maskTitle(f.title, n).map((x) => (x.letter
-    ? `<span class="find-tile${x.shown ? ' on' : ''}">${x.shown ? esc(x.c) : ''}</span>`
+  const g = guessed(f);
+  return `<div class="find-tiles" aria-label="${g ? esc(f.title) + ' (erraten), ' : ''}${n} von ${letterCount(f.title)} Buchstaben aufgedeckt">${maskTitle(f.title, n).map((x) => (x.letter
+    ? `<span class="find-tile${x.shown ? ' on' : (g ? ' guess' : '')}">${x.shown || g ? esc(x.c) : ''}</span>`
     : (x.c === ' ' ? '<span class="find-gap"></span>' : `<span class="find-sep">${esc(x.c)}</span>`))).join('')}</div>`;
 }
 
@@ -57,7 +62,7 @@ export function findCard(S, T) {
     html += `<a class="card pad find-open" href="#/fundstuecke">
       <span class="find-kicker">${svg(COMPASS, 14)} ${hint(open)}</span>
       ${tiles(open, n)}
-      <span class="small muted">${n ? 'Schon eine Idee? Raten erlaubt.' : 'Jede erledigte Gewohnheit deckt Buchstaben auf.'}</span>
+      <span class="small muted">${guessed(open) ? `${star(open)} · noch ${letterCount(open.title) - n} bis zum Artikel` : (n ? 'Schon eine Idee? Antippen und raten.' : 'Jede erledigte Gewohnheit deckt Buchstaben auf.')}</span>
     </a>`;
   }
   return html;
@@ -85,6 +90,7 @@ export function findView(S, T, id) {
           ${f.description ? `<div class="small muted">${esc(f.description)}</div>` : ''}
           <p class="find-extract">${esc(f.extract || 'Der Text wird geladen, sobald Wikipedia erreichbar ist.')}</p>
           ${f.origin ? `<div class="small muted">${esc(f.origin)}</div>` : ''}
+          ${guessed(f) ? `<div class="small" style="font-weight: 600">${star(f)}</div>` : ''}
           ${f.url ? `<a class="link-btn" href="${esc(f.url)}" target="_blank" rel="noopener" style="padding: 0">Weiterlesen auf Wikipedia ›</a>` : ''}
         </div>
       </article>
@@ -110,7 +116,7 @@ export function findsView(S, T) {
   const open = openFind(S);
   const rows = found.map((f, i) => `<a class="find-row" href="#/fund/${esc(f.id)}">
       <span class="find-rail"><span class="find-dot${f.source !== 'walk' ? ' branch' : ''}"></span>${i < found.length - 1 ? '<span class="find-line"></span>' : ''}</span>
-      <span style="flex: 1; min-width: 0; padding-bottom: 12px"><span style="display: flex; justify-content: space-between; gap: 8px"><b>${esc(f.title)}</b><span class="small muted" style="white-space: nowrap">${f.found_day === T ? 'heute' : esc(shortDate(f.found_day))}</span></span>
+      <span style="flex: 1; min-width: 0; padding-bottom: 12px"><span style="display: flex; justify-content: space-between; gap: 8px"><b>${esc(f.title)}${guessed(f) ? ' <span title="erraten">⭐</span>' : ''}</b><span class="small muted" style="white-space: nowrap">${f.found_day === T ? 'heute' : esc(shortDate(f.found_day))}</span></span>
         <span class="small muted">${esc(f.origin || '')}</span></span>
     </a>`).join('');
   return `<div class="app">${back}
@@ -118,10 +124,14 @@ export function findsView(S, T) {
       <h1 style="padding: 0 4px">Fundstücke</h1>
       <section class="grid2">
         <div class="card stat"><div class="small muted">volle Tage</div><div class="num">${fullDays(S.habits, S.idx, S.pauses, T)}</div></div>
-        <div class="card stat"><div class="small muted">gefunden</div><div class="num">${found.length}</div></div>
+        <div class="card stat"><div class="small muted">gefunden</div><div class="num">${found.length}</div>${found.some(guessed) ? `<div class="small muted">davon ${found.filter(guessed).length} erraten ⭐</div>` : ''}</div>
       </section>
       ${open ? `<section class="card pad find-open"><span class="find-kicker">${svg(COMPASS, 14)} ${hint(open)}</span>${tiles(open, revealedNow(open, T))}
-        <span class="small muted">Jede erledigte Gewohnheit deckt Buchstaben auf – ist alles frei, gehört das Fundstück dir. Aufgedecktes bleibt, auch über Nacht.</span></section>` : ''}
+        ${guessed(open)
+          ? `<p class="small" style="font-weight: 600; margin: 0">${star(open)}</p><span class="small muted">Der Artikel öffnet sich, wenn alle Buchstaben aufgedeckt sind – mit deinen Gewohnheiten.</span>`
+          : `<form class="find-guess" data-form="find-guess"><input class="input" name="guess" placeholder="Dein Tipp" autocomplete="off" autocapitalize="sentences" enterkeyhint="go" aria-label="Dein Tipp"><button type="submit" class="btn">Raten</button></form>
+            ${S.findGuessMsg ? `<span class="small" role="status">${esc(S.findGuessMsg)}</span>` : ''}
+            <span class="small muted">Jede erledigte Gewohnheit deckt Buchstaben auf – ist alles frei, gehört das Fundstück dir. Richtig geraten gibt einen Stern ⭐, je früher, desto schöner.</span>`}</section>` : ''}
       ${found.length ? `<section class="card pad"><div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">Deine Wanderung</h2><span class="small muted">neueste oben</span></div>${rows}</section>
         <p class="hint" style="padding: 0 4px">Blau: weitergewandert. Grün: abgezweigt, weil dein Tag etwas Neues brachte. Ein Tag ohne Haken lässt die Wanderung einfach warten – nichts geht verloren.</p>` : '<p class="hint" style="padding: 0 4px">Noch nichts gefunden – dein erstes Fundstück wartet oben.</p>'}
     </div>

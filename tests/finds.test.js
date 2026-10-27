@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { letterCount, revealOrder, maskTitle, earnedOn, rollover, revealed, fullDays, goodLink, pickOptions, branchCandidates } from '../js/finds.js';
+import { letterCount, revealOrder, maskTitle, earnedOn, rollover, revealed, fullDays, goodLink, pickOptions, branchCandidates, guessMatches } from '../js/finds.js';
 import { indexLogs } from '../js/stats.js';
 
 const H = (id, extra = {}) => ({ id, name: id, schedule: 'daily', start_day: '2026-10-20', archived: false, ...extra });
@@ -90,4 +90,19 @@ test('Abzweige: Neues aus Strecke, Essen, Sport seit dem letzten Fundstück, neu
     ['2026-10-23', 'Schwimmen', 'sport']
   ]);
   assert.equal(c[1].origin, 'Essen: zum ersten Mal Kümmel');
+});
+
+test('Raten: Schreibweise großzügig, Inhalt genau', () => {
+  assert.equal(guessMatches('pfahlbauten', 'Pfahlbauten'), true);
+  assert.equal(guessMatches(' Pfahl-Bauten ', 'Pfahlbauten'), true);
+  assert.equal(guessMatches('Kuemmel', 'Kümmel'), true);
+  assert.equal(guessMatches('Kümmel', 'Kuemmel'), true);
+  assert.equal(guessMatches('Strassburger Münster', 'Straßburger Münster'), true);
+  assert.equal(guessMatches('cefalu', 'Cefalù'), true);
+  assert.equal(guessMatches('die Gotik', 'Gotik'), true);
+  assert.equal(guessMatches('Linie', 'Linie (Aquavit)'), true);
+  assert.equal(guessMatches('Linie Aquavit', 'Linie (Aquavit)'), true);
+  assert.equal(guessMatches('Pfahlbau', 'Pfahlbauten'), false, 'fast ist nicht richtig');
+  assert.equal(guessMatches('', 'Gotik'), false);
+  assert.equal(guessMatches('die', 'Gotik'), false);
 });

@@ -52,6 +52,20 @@ export function maskTitle(title, n) {
   });
 }
 
+// Richtig geraten? Groß/klein, Umlaute (ä = ae), Akzente, Leerzeichen und Bindestriche egal;
+// ein Zusatz in Klammern darf fehlen („Linie“ für „Linie (Aquavit)“), ein Artikel davor auch („die Gotik“).
+export function guessMatches(guess, title) {
+  const norm = (s) => String(s || '').toLowerCase()
+    .replace(/ß/g, 'ss').replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+  const g = norm(String(guess || '').trim().replace(/^(der|die|das|ein|eine)\s+/i, ''));
+  if (!g) return false;
+  const full = norm(title);
+  const short = norm(String(title || '').replace(/\s*\(.*?\)\s*/g, ' '));
+  return g === full || g === short;
+}
+
 // ───────────── Fortschritt ─────────────
 
 // Wie viele Buchstaben bringt dieser Tag? Anteil des Heute-Rings × Buchstaben (voller Ring = alle)
