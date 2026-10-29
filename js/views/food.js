@@ -1,7 +1,7 @@
 // Essen: Karte auf der Übersicht, Woche mit Sammelalbum, Eintragen, eine Mahlzeit.
 // Entdecken statt Diät: Pflanzen sammeln, Nährstoffe als Prozent, Kalorien nur klein.
 
-import { PLANTS, PLANT_GROUPS, isLegume, nutrOf, percentOf, dayFood, week, discovery, proteinRef, macroSplit, SLOTS, slotLabel, PLAUSIBLE_MAX_G } from '../food.js';
+import { PLANTS, PLANT_GROUPS, isLegume, nutrOf, percentOf, dayFood, week, discovery, proteinRef, macroSplit, SLOTS, slotLabel, PLAUSIBLE_MAX_G, recentMeals } from '../food.js';
 import { series } from '../body.js';
 import { WEEKDAYS_SHORT, today, toDay, parseDay } from '../dates.js';
 import { svg } from '../icons.js';
@@ -228,12 +228,15 @@ export function foodForm(S, T) {
     const done = todays.some((m) => m.fav_id === f.id);
     return `<button type="button" class="chip food-fav" data-action="food-fav" data-id="${esc(f.id)}" aria-pressed="${done}">${done ? '✓ ' : ''}${esc(f.name)}</button>`;
   }).join('');
+  const recent = recentMeals(S.meals, S.mealFavorites, T).map((m) => `<button type="button" class="chip" data-action="meal-again" data-id="${esc(m.id)}">↻ ${esc(m.name)}</button>`).join('');
   const favBlock = d.editId || d.items.length || S.foodResults || S.offResults ? '' : `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <h2 style="font-size: 17px">Wie immer – ein Tipp</h2>
       ${favs ? `<div class="food-chips">${favs}</div>` : '<p class="small muted">Noch keine Favoriten. Unten beim Eintragen „Als Favorit merken“ ankreuzen – dann steht die Mahlzeit künftig hier.</p>'}
+      ${recent ? `<h2 style="font-size: 15px; margin-top: 6px">Zuletzt gegessen <span class="small muted" style="font-weight: 500">· nochmal, z. B. Reste</span></h2><div class="food-chips">${recent}</div>` : ''}
     </section>`;
   return `<div class="app">${backBar(d.editId ? `#/essen/${esc(d.editId)}` : '#/', d.editId ? 'Mahlzeit' : 'Übersicht')}<div class="wrap" style="gap: 14px">
     <h1 style="font-size: 28px; padding: 0 4px">${d.editId ? 'Bearbeiten' : 'Essen eintragen'}</h1>
+    ${d.again ? `<section class="hint-card"><div style="font-size: 15px; font-weight: 700">↻ Nochmal: ${esc(d.name)}</div><p>Von ${d.again === T ? 'heute' : (() => { const y = parseDay(T); y.setDate(y.getDate() - 1); return d.again === toDay(y) ? 'gestern' : esc(shortDate(d.again)); })()}. Portion und „Wann?“ anpassen, dann unten speichern.</p></section>` : ''}
     ${d.skillet ? `<section class="hint-card skillet-hint"><div style="font-size: 15px; font-weight: 700">🍳 Aus Skillet: ${esc(d.name)}</div>
       <p>${d.skillet.loading ? 'Zutaten werden geladen …' : `Mengen für <b>eine Portion</b> (Rezept für ${d.skillet.portions}). Passt etwas nicht, einfach anpassen – dann unten speichern.`}</p>
       ${d.skillet.missing.length ? `<p class="small">Nicht in den Lebensmittel-Daten, nicht mitgerechnet: ${esc(d.skillet.missing.join(', '))}</p>` : ''}
@@ -326,6 +329,7 @@ export function mealView(S, T, id) {
       <h2 style="font-size: 17px">Portion</h2>
       <div class="seg small-seg" role="radiogroup" aria-label="Portion">${portions}</div>
     </section>
+    <button type="button" class="btn" data-action="meal-again" data-id="${esc(m.id)}">↻ Nochmal gegessen</button>
     <div style="display: flex; gap: 10px">
       <button type="button" class="btn ghost" style="flex: 1" data-action="meal-edit" data-id="${esc(m.id)}">Bearbeiten</button>
       ${m.fav_id || (S.mealFavorites || []).some((f) => f.name === m.name) ? '' : `<button type="button" class="btn ghost" style="flex: 1" data-action="meal-to-fav" data-id="${esc(m.id)}">Als Favorit</button>`}

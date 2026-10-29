@@ -151,3 +151,12 @@ test('Wann gegessen: Mahlzeit nach Uhrzeit, anderer Tag mit typischer Uhrzeit', 
   assert.equal(slotLabel('abend'), 'Abendessen');
   assert.equal(slotLabel(null), null);
 });
+
+test('Zuletzt gegessen: neueste zuerst, einmal pro Name, ohne Favoriten, nur die letzten 7 Tage', async () => {
+  const { recentMeals } = await import('../js/food.js');
+  const m = (id, name, day, t = '12:00') => ({ id, name, day, at: `${day}T${t}:00` });
+  const meals = [m('a', 'Chorizo-Risotto', '2026-10-28', '19:00'), m('b', 'Porridge', '2026-10-29', '08:00'), m('c', 'chorizo-risotto', '2026-10-27'),
+    m('d', 'Müsli', '2026-10-29', '07:00'), m('e', 'Alt', '2026-10-20'), { name: 'ungespeichert', day: '2026-10-29', at: '2026-10-29T09:00:00' }];
+  const r = recentMeals(meals, [{ name: 'Müsli' }], '2026-10-29');
+  assert.deepEqual(r.map((x) => x.id), ['b', 'a']);
+});

@@ -375,6 +375,14 @@ export const clicks = {
     S.foodDraft = { name: m.name, items: (m.items || []).map((i) => ({ ...i })), portion: Number(m.portion) || 1, plants: (m.plants || []).slice(), home: !!m.home, fav: false, editId: m.id, removed: [], day: m.day, slot: m.slot || guessSlot(new Date(m.at)) };
     go('#/essen-neu');
   },
+  // Nochmal gegessen (z. B. Reste): Formular vorbefüllt für heute – Portion/Tag noch anpassbar, dann speichern
+  'meal-again': ({ id }) => {
+    const m = (S.meals || []).find((x) => x.id === id);
+    if (!m) return;
+    S.foodDraft = { ...newDraft(), name: m.name, items: (m.items || []).map((i) => ({ ...i })), portion: Number(m.portion) || 1, plants: (m.plants || []).slice(), home: !!m.home, again: m.day, removed: [] };
+    resetSearch();
+    go('#/essen-neu');
+  },
   'meal-del': ({ id }) => deleteMeal(id),
   'meal-to-fav': ({ id }) => toFavorite(id),
   'food-fav-del': ({ id }) => deleteFavorite(id),

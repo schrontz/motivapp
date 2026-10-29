@@ -354,3 +354,22 @@ export function mealAt(day, slot, today, now = new Date()) {
 
 // Mengen, die wohl nicht stimmen (z. B. aus einer verunglückten Schätzung) – nur Hinweis, nichts wird geändert
 export const PLAUSIBLE_MAX_G = 1500;
+
+// „Zuletzt gegessen“: Mahlzeiten der letzten Tage zum nochmal Eintragen (Reste!) –
+// neueste zuerst, gleiche Namen nur einmal, was schon Favorit ist, steht dort
+export function recentMeals(meals, favorites, T, days = 7, n = 6) {
+  const from = new Date(`${T}T12:00:00`);
+  from.setDate(from.getDate() - (days - 1));
+  const fromDay = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+  const favs = new Set((favorites || []).map((f) => String(f.name || '').trim().toLowerCase()));
+  const seen = new Set();
+  const out = [];
+  for (const m of [...(meals || [])].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))) {
+    const key = String(m.name || '').trim().toLowerCase();
+    if (!m.id || !key || m.day < fromDay || m.day > T || seen.has(key) || favs.has(key)) continue;
+    seen.add(key);
+    out.push(m);
+    if (out.length >= n) break;
+  }
+  return out;
+}
