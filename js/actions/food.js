@@ -3,11 +3,11 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast, go } from '../core.js';
-import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood, skilletDecode } from '../food.js';
+import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood, skilletDecode, guessSlot, mealAt } from '../food.js';
 import { pickSummary } from '../distance.js';
-import { toDay } from '../dates.js';
+import { toDay, today } from '../dates.js';
 
-const newDraft = () => ({ name: '', items: [], portion: 1, plants: [], home: false, fav: false, editId: null });
+const newDraft = () => ({ name: '', items: [], portion: 1, plants: [], home: false, fav: false, editId: null, day: today(), slot: guessSlot() });
 
 function resetSearch() {
   S.foodQuery = '';
@@ -31,6 +31,7 @@ async function logFavorite(id) {
   if (!f) return;
   const now = new Date();
   const meal = { at: now.toISOString(), day: toDay(now), name: f.name, portion: 1, items: f.items || [], plants: f.plants || [], home: !!f.home, fav_id: f.id };
+  if (S.hasMealSlot) meal.slot = guessSlot(now);
   meal.nutr = nutrOf(meal.items, null, 1);
   S.meals = (S.meals || []).concat(meal);
   S.foodUndo = meal;
@@ -221,13 +222,17 @@ async function saveDraft() {
     const m = S.meals.find((x) => x.id === d.editId);
     if (!m) return;
     Object.assign(m, { name, items, plants: d.plants.slice(), portion: d.portion, home: d.home, nutr });
+    if (d.day !== m.day) Object.assign(m, { day: d.day, at: mealAt(d.day, d.slot, today()) });
+    if (S.hasMealSlot) m.slot = d.slot;
     S.foodDraft = null;
     go(`#/essen/${encodeURIComponent(m.id)}`);
     await persist(() => db.saveMeal(m));
     return;
   }
-  const now = new Date();
-  const meal = { at: now.toISOString(), day: toDay(now), name, portion: d.portion, items, plants: d.plants.slice(), home: d.home, nutr, fav_id: null };
+  const T = today();
+  const day = d.day && d.day <= T ? d.day : T;
+  const meal = { at: mealAt(day, d.slot, T), day, name, portion: d.portion, items, plants: d.plants.slice(), home: d.home, nutr, fav_id: null };
+  if (S.hasMealSlot) meal.slot = d.slot;
   let fav = null;
   if (d.fav) {
     fav = { name, items, plants: d.plants.slice(), home: d.home, sort_order: (S.mealFavorites || []).length };
@@ -367,7 +372,7 @@ export const clicks = {
   'meal-edit': ({ id }) => {
     const m = (S.meals || []).find((x) => x.id === id);
     if (!m) return;
-    S.foodDraft = { name: m.name, items: (m.items || []).map((i) => ({ ...i })), portion: Number(m.portion) || 1, plants: (m.plants || []).slice(), home: !!m.home, fav: false, editId: m.id, removed: [] };
+    S.foodDraft = { name: m.name, items: (m.items || []).map((i) => ({ ...i })), portion: Number(m.portion) || 1, plants: (m.plants || []).slice(), home: !!m.home, fav: false, editId: m.id, removed: [], day: m.day, slot: m.slot || guessSlot(new Date(m.at)) };
     go('#/essen-neu');
   },
   'meal-del': ({ id }) => deleteMeal(id),
@@ -393,6 +398,17 @@ export const changes = {
     if (!d.items.length && !S.foodResults && d.name.trim().length >= 3) runSearch(d.name.trim());
   },
   'food-portion': ({ el }) => { if (S.foodDraft) { S.foodDraft.portion = Number(el.value) || 1; render(); } },
+  // Wann gegessen? Heute / gestern / anderer Tag, dazu die Mahlzeit
+  'food-day': ({ el }) => {
+    const d = S.foodDraft;
+    if (!d) return;
+    const T = today();
+    if (el.value === 'today') d.day = T;
+    else if (el.value === 'yesterday') { const y = new Date(); y.setDate(y.getDate() - 1); d.day = toDay(y); if (d.slot === 'fruehstueck' && new Date().getHours() < 11) d.slot = 'abend'; }
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(el.value) && el.value <= T) d.day = el.value;
+    render();
+  },
+  'food-slot': ({ el }) => { if (S.foodDraft) { S.foodDraft.slot = el.value; render(); } },
   'food-home': ({ el }) => { if (S.foodDraft) S.foodDraft.home = el.checked; },
   'food-fav-mark': ({ el }) => { if (S.foodDraft) S.foodDraft.fav = el.checked; },
   'meal-portion': ({ el }) => setPortion(el.dataset.id, el.value)

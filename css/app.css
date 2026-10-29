@@ -521,6 +521,14 @@ button.dest-row:first-child { border-top: 0; }
 .food-hit .small { flex: none; }
 .food-items { display: flex; flex-direction: column; gap: 6px; }
 .food-item { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 44px; }
+.food-item b { display: block; overflow-wrap: anywhere; hyphens: auto; }
+.food-item.warn b { color: var(--c-orange); }
+.food-warn { display: block; color: var(--c-orange); font-weight: 600; }
+.food-when { display: flex; gap: 8px; align-items: center; }
+.food-when .seg { flex: 1; min-width: 0; }
+.food-date { width: 150px; flex: none; height: 44px; font-size: 15px; opacity: .7; }
+.food-date.on { opacity: 1; border-color: var(--c-blue); }
+.food-slots label span { padding-left: 4px; padding-right: 4px; font-size: 13px; }
 .food-g { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
 .mini-round.small { width: 36px; height: 36px; font-size: 18px; flex: none; }
 .food-label { hyphens: manual; overflow-wrap: anywhere; line-height: 1.25; }

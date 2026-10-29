@@ -1,9 +1,9 @@
 // Essen: Karte auf der Übersicht, Woche mit Sammelalbum, Eintragen, eine Mahlzeit.
 // Entdecken statt Diät: Pflanzen sammeln, Nährstoffe als Prozent, Kalorien nur klein.
 
-import { PLANTS, PLANT_GROUPS, isLegume, nutrOf, percentOf, dayFood, week, discovery, proteinRef, macroSplit } from '../food.js';
+import { PLANTS, PLANT_GROUPS, isLegume, nutrOf, percentOf, dayFood, week, discovery, proteinRef, macroSplit, SLOTS, slotLabel, PLAUSIBLE_MAX_G } from '../food.js';
 import { series } from '../body.js';
-import { WEEKDAYS_SHORT } from '../dates.js';
+import { WEEKDAYS_SHORT, today, toDay, parseDay } from '../dates.js';
 import { svg } from '../icons.js';
 import { backBar, esc, nav, numTxt, shortDate } from './ui.js';
 
@@ -34,7 +34,7 @@ export function foodCard(S, T) {
   const d = dayFood(S.meals, T);
   const w = week(S.meals, T, weightOf(S));
   const pref = proteinRef(weightOf(S));
-  const eaten = d.meals.map((m) => `<a class="food-row" href="#/essen/${esc(m.id)}"><span><b>${esc(m.name)}</b> <span class="muted">· ${timeTxt(m.at)}</span></span><span class="food-plus">+${(m.plants || []).length} 🌱</span></a>`).join('');
+  const eaten = d.meals.map((m) => `<a class="food-row" href="#/essen/${esc(m.id)}"><span><b>${esc(m.name)}</b> <span class="muted">· ${slotLabel(m.slot) || timeTxt(m.at)}</span></span><span class="food-plus">+${(m.plants || []).length} 🌱</span></a>`).join('');
   return `<section class="card pad food-card">
     <a class="reduce-head" href="#/essen"><span class="reduce-ico food-ico">${LEAF}</span><b style="flex: 1">Essen heute</b><span class="small" style="color: var(--c-blue)">Woche ›</span></a>
     <div class="stat3 inner">
@@ -83,6 +83,18 @@ function nutrBars(list) {
   return list.map((n) => `<div class="food-nrow"><span>${esc(n.label)}${n.pct != null && n.pct >= 100 ? ' ★' : ''}</span>${bar(n.pct, n.pct == null ? 'var(--border)' : 'var(--food)')}<b>${n.pct == null ? '–' : `${n.pct} %`}</b></div>`).join('');
 }
 
+// Alle Einträge der Woche, neueste oben – auch Nachgetragenes ist so erreichbar (antippen = ansehen, ändern, löschen)
+function weekMeals(S, from, to, T) {
+  const list = (S.meals || []).filter((m) => m.day >= from && m.day <= to && m.id)
+    .sort((a, b) => (a.day === b.day ? (a.at < b.at ? 1 : -1) : (a.day < b.day ? 1 : -1)));
+  if (!list.length) return '';
+  const dayTxt = (d) => (d === T ? 'heute' : `${WEEKDAYS_SHORT[(parseDay(d).getDay() + 6) % 7]} ${shortDate(d)}`);
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 4px">
+      <h2 style="font-size: 17px; margin-bottom: 4px">Diese Woche gegessen</h2>
+      ${list.map((m) => `<a class="food-row" href="#/essen/${esc(m.id)}"><span><b>${esc(m.name)}</b> <span class="muted">· ${dayTxt(m.day)}${slotLabel(m.slot) ? ' · ' + slotLabel(m.slot) : ''}</span></span><span class="food-plus">+${(m.plants || []).length} 🌱</span></a>`).join('')}
+    </section>`;
+}
+
 export function foodView(S, T) {
   if (!foodOn(S)) {
     return `<div class="app">${backBar('#/', 'Übersicht')}<div class="wrap"><p class="hint-card">Schalte „Essen“ im Profil ein.</p></div>${nav('overview')}</div>`;
@@ -123,6 +135,7 @@ export function foodView(S, T) {
       <div class="food-days">${days}</div>
       <p class="small muted">${w.home} ${w.home === 1 ? 'Mahlzeit' : 'Mahlzeiten'} selbst gekocht, ${w.out} sonst – einfach so, ohne Ziel.</p>
     </section>
+    ${weekMeals(S, w.start, end, T)}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 8px">
       <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">Favoriten</h2><a class="link-btn" href="#/essen-neu">+ Neu</a></div>
       ${favs || '<p class="small muted">Beim Eintragen „Als Favorit merken“ ankreuzen – dann reicht künftig ein Tipp unter „Essen eintragen“.</p>'}
@@ -165,6 +178,23 @@ function plantPicker(S, chosen) {
   return `<div class="goal-regions" role="group" aria-label="Pflanzen-Gruppe">${tabs}</div><div class="food-chips">${chips}</div>`;
 }
 
+// Wann gegessen? Tag (heute / gestern / anderer) und Mahlzeit
+function whenSection(S, d) {
+  const T = today();
+  const y = (() => { const x = parseDay(T); x.setDate(x.getDate() - 1); return toDay(x); })();
+  const which = d.day === T ? 'today' : d.day === y ? 'yesterday' : 'other';
+  const days = [['today', 'Heute'], ['yesterday', 'Gestern']].map(([v, l]) => `<label><input type="radio" name="fday" value="${v}"${which === v ? ' checked' : ''} data-action="food-day"><span>${l}</span></label>`).join('');
+  const slots = SLOTS.map(([v, l]) => `<label><input type="radio" name="fslot" value="${v}"${d.slot === v ? ' checked' : ''} data-action="food-slot"><span>${l}</span></label>`).join('');
+  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="font-size: 17px">Wann?</h2>
+      <div class="food-when">
+        <div class="seg small-seg" role="radiogroup" aria-label="Tag">${days}</div>
+        <input class="input food-date${which === 'other' ? ' on' : ''}" type="date" max="${T}" value="${esc(d.day || T)}" data-action="food-day" aria-label="Anderer Tag">
+      </div>
+      ${S.hasMealSlot ? `<div class="seg small-seg food-slots" role="radiogroup" aria-label="Mahlzeit">${slots}</div>` : '<p class="small muted">Für Frühstück/Mittag/Abend bitte das Datenbank-Update <code>021_mahlzeit_wann.sql</code> ausführen.</p>'}
+    </section>`;
+}
+
 export function foodForm(S, T) {
   if (!foodOn(S)) return foodView(S, T);
   const d = S.foodDraft;
@@ -186,7 +216,7 @@ export function foodForm(S, T) {
   const busy = S.foodSearching || S.offSearching;
   const sources = [['bls', 'Lebensmittel (BLS)'], ['off', 'Marken (OFF)']].map(([v, l]) => `<label><input type="radio" name="fsrc" value="${v}"${src === v ? ' checked' : ''} data-action="food-source"><span>${l}</span></label>`).join('');
   const shown = src === 'off' ? off : results;
-  const items = d.items.map((it, i) => `<div class="food-item"><span style="flex: 1; min-width: 0"><b>${esc(it.name)}</b></span>
+  const items = d.items.map((it, i) => `<div class="food-item${it.grams > PLAUSIBLE_MAX_G ? ' warn' : ''}"><span style="flex: 1; min-width: 0"><b>${esc(it.name)}</b>${it.grams > PLAUSIBLE_MAX_G ? '<span class="small food-warn">Menge prüfen</span>' : ''}</span>
       <button type="button" class="mini-round small" data-action="food-grams" data-idx="${i}" data-id="-1" aria-label="Weniger">−</button>
       <b class="food-g">${it.grams} g</b>
       <button type="button" class="mini-round small" data-action="food-grams" data-idx="${i}" data-id="1" aria-label="Mehr">+</button>
@@ -206,7 +236,8 @@ export function foodForm(S, T) {
     <h1 style="font-size: 28px; padding: 0 4px">${d.editId ? 'Bearbeiten' : 'Essen eintragen'}</h1>
     ${d.skillet ? `<section class="hint-card skillet-hint"><div style="font-size: 15px; font-weight: 700">🍳 Aus Skillet: ${esc(d.name)}</div>
       <p>${d.skillet.loading ? 'Zutaten werden geladen …' : `Mengen für <b>eine Portion</b> (Rezept für ${d.skillet.portions}). Passt etwas nicht, einfach anpassen – dann unten speichern.`}</p>
-      ${d.skillet.missing.length ? `<p class="small">Nicht in den Lebensmittel-Daten, nicht mitgerechnet: ${esc(d.skillet.missing.join(', '))}</p>` : ''}</section>` : favBlock}
+      ${d.skillet.missing.length ? `<p class="small">Nicht in den Lebensmittel-Daten, nicht mitgerechnet: ${esc(d.skillet.missing.join(', '))}</p>` : ''}
+      ${d.items.some((it) => it.grams > PLAUSIBLE_MAX_G) ? `<p class="small"><b>Bitte prüfen</b> – ungewöhnlich viel: ${esc(d.items.filter((it) => it.grams > PLAUSIBLE_MAX_G).map((it) => `${it.name} (${it.grams} g)`).join(', '))}. Vermutlich hat sich Skillet bei der Menge verschätzt.</p>` : ''}</section>` : favBlock}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
       <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : ((S.mealFavorites || []).length && !d.editId ? 'Etwas anderes?' : 'Was hast du gegessen?')}</h2>
       <form class="goal-search" data-form="food-search" role="search">
@@ -219,6 +250,7 @@ export function foodForm(S, T) {
       ${items ? `<div class="food-items">${items}</div>` : (shown ? '' : `<p class="small muted">${src === 'off' ? 'Markenprodukte aus dem Supermarkt – oder gleich den Strichcode scannen.' : 'Grundnahrungsmittel und ganze Gerichte – für Auswärts reicht oft z. B. „Flammkuchen“, „Döner“, „Pizza“.'} Treffer antippen, dann steht es unten drin.</p>`)}
       ${d.items.length || d.name || d.plants.length || d.showName ? `<label class="field"><span>Name des Eintrags</span><input class="input" name="fname" value="${esc(d.name)}" placeholder="z. B. Flammkuchen" data-action="food-name" autocomplete="off"></label>` : ''}
     </section>
+    ${whenSection(S, d)}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <h2 style="font-size: 17px">Portion</h2>
       <div class="seg small-seg" role="radiogroup" aria-label="Portion">${portions}</div>
@@ -278,7 +310,7 @@ export function mealView(S, T, id) {
   const day = m.day === T ? 'heute' : shortDate(m.day);
   return `<div class="app">${backBar('#/essen', 'Essen')}<div class="wrap" style="gap: 14px">
     <div style="padding: 0 4px"><h1 style="font-size: 28px">${esc(m.name)}</h1>
-      <div class="small muted" style="font-size: 14px">${day} ${timeTxt(m.at)} · ${m.home ? 'selbst gekocht' : 'auswärts / gekauft'} · ${portionTxt(m.portion)}e Portion</div></div>
+      <div class="small muted" style="font-size: 14px">${day} ${slotLabel(m.slot) ? '· ' + slotLabel(m.slot) : timeTxt(m.at)} · ${m.home ? 'selbst gekocht' : 'auswärts / gekauft'} · ${portionTxt(m.portion)}e Portion</div></div>
     <section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
       <div class="section-head" style="margin: 0"><h2 style="font-size: 17px">${(m.plants || []).length} ${(m.plants || []).length === 1 ? 'Pflanze' : 'Pflanzen'}</h2><span class="small muted">antippen: Wusstest du …?</span></div>
       ${(m.plants || []).length ? `<div class="food-chips">${m.plants.map((p) => `<button type="button" class="chip" data-action="plant-info" data-id="${esc(p)}">${isLegume(p) ? '🫘 ' : ''}${esc(p)}</button>`).join('')}</div>` : '<p class="small muted">Keine Pflanzen eingetragen.</p>'}

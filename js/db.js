@@ -60,7 +60,7 @@ export async function signOut() {
 // ───────────── Daten ─────────────
 
 export async function loadAll() {
-  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true, hasFoodSchema: true, hasBls: true, hasFindSchema: true, hasGuessSchema: true };
+  if (isDemo) return { ...structuredClone(demo), hasWithingsSchema: true, hasStrengthSchema: true, hasBodySchema: true, hasTravelSchema: true, hasPlacesSchema: true, hasStagesSchema: true, hasReduceSchema: true, hasPulseSchema: true, hasAlcoholSchema: true, hasFoodSchema: true, hasBls: true, hasFindSchema: true, hasGuessSchema: true, hasMealSlot: true };
   const [profiles, categories, habits, logs, pauses, extra, strength, body, travel, reduce, food, finds] = await Promise.all([
     client.from('profiles').select('*').then(check),
     fetchAll('categories', 'sort_order'),
@@ -83,14 +83,14 @@ export async function loadFoodData() {
   try {
     const [meals, favorites] = await Promise.all([fetchAll('meals', 'at'), fetchAll('meal_favorites', 'sort_order')]);
     const probe = await client.from('bls_foods').select('code').limit(1);
-    return { meals, mealFavorites: favorites, hasFoodSchema: true, hasBls: !probe.error && (probe.data || []).length > 0 };
+    const slot = await client.from('meals').select('slot').limit(1); // Mahlzeit (Update 021)
+    return { meals, mealFavorites: favorites, hasFoodSchema: true, hasBls: !probe.error && (probe.data || []).length > 0, hasMealSlot: !slot.error };
   } catch (err) {
     console.warn('Essen nicht verfügbar (Datenbank-Update 015 schon ausgeführt?)', err);
-    return { meals: [], mealFavorites: [], hasFoodSchema: false, hasBls: false };
+    return { meals: [], mealFavorites: [], hasFoodSchema: false, hasBls: false, hasMealSlot: false };
   }
 }
 
-// Lebensmittel suchen: jedes Wort muss vorkommen (Reihenfolge egal), Mehrzahl/Synonyme siehe food.js
 // BLS-Zeilen zu bestimmten Codes (Übergabe aus Skillet)
 export async function foodsByCodes(codes) {
   if (!codes.length) return [];
@@ -98,6 +98,7 @@ export async function foodsByCodes(codes) {
   return check(await client.from('bls_foods').select('*').in('code', codes));
 }
 
+// Lebensmittel suchen: jedes Wort muss vorkommen (Reihenfolge egal), Mehrzahl/Synonyme siehe food.js
 export async function searchFoods(q) {
   const terms = searchTerms(q);
   if (!terms.length) return [];

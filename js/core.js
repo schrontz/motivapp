@@ -45,6 +45,7 @@ export const S = {
   mealFavorites: [],
   hasFoodSchema: false,
   hasBls: false,
+  hasMealSlot: false,
   foodDraft: null,
   foodQuery: '',
   foodResults: null,

@@ -331,3 +331,26 @@ export function skilletDecode(payload) {
     return null;
   }
 }
+
+// ───────────── Wann gegessen? ─────────────
+export const SLOTS = [['fruehstueck', 'Frühstück', '08:00'], ['mittag', 'Mittag', '12:30'], ['snack', 'Snack', '16:00'], ['abend', 'Abendessen', '19:00']];
+export const slotLabel = (id) => (SLOTS.find((s) => s[0] === id) || [])[1] || null;
+
+// Vorschlag nach Uhrzeit
+export function guessSlot(date = new Date()) {
+  const m = date.getHours() * 60 + date.getMinutes();
+  if (m < 10 * 60 + 30) return 'fruehstueck';
+  if (m < 14 * 60 + 30) return 'mittag';
+  if (m < 17 * 60 + 30) return 'snack';
+  return 'abend';
+}
+
+// Zeitpunkt des Eintrags: heute = jetzt; anderer Tag = typische Uhrzeit der Mahlzeit
+export function mealAt(day, slot, today, now = new Date()) {
+  if (day === today) return now.toISOString();
+  const t = (SLOTS.find((s) => s[0] === slot) || SLOTS[3])[2];
+  return new Date(`${day}T${t}:00`).toISOString();
+}
+
+// Mengen, die wohl nicht stimmen (z. B. aus einer verunglückten Schätzung) – nur Hinweis, nichts wird geändert
+export const PLAUSIBLE_MAX_G = 1500;

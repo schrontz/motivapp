@@ -137,3 +137,17 @@ test('Übergabe aus Skillet: eine Portion, Umlaute, Unsinn fliegt raus', async (
   assert.equal(skilletDecode(skilletEncode({ v: 2, z: [] })), null);
   assert.equal(skilletDecode('irgendwas'), null);
 });
+
+test('Wann gegessen: Mahlzeit nach Uhrzeit, anderer Tag mit typischer Uhrzeit', async () => {
+  const { guessSlot, mealAt, slotLabel } = await import('../js/food.js');
+  const at = (t) => new Date(`2026-10-29T${t}:00`);
+  assert.equal(guessSlot(at('07:15')), 'fruehstueck');
+  assert.equal(guessSlot(at('12:40')), 'mittag');
+  assert.equal(guessSlot(at('16:10')), 'snack');
+  assert.equal(guessSlot(at('20:30')), 'abend');
+  const now = at('08:37');
+  assert.equal(mealAt('2026-10-29', 'mittag', '2026-10-29', now), now.toISOString(), 'heute = jetzt');
+  assert.equal(new Date(mealAt('2026-10-28', 'abend', '2026-10-29', now)).getHours(), 19, 'gestern Abend = 19 Uhr');
+  assert.equal(slotLabel('abend'), 'Abendessen');
+  assert.equal(slotLabel(null), null);
+});
