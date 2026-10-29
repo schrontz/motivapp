@@ -598,3 +598,4 @@ button.dest-row:first-child { border-top: 0; }
 .find-guess { display: flex; gap: 8px; }
 .find-guess .input { flex: 1; min-width: 0; height: 48px; }
 .find-guess .btn { width: auto; padding: 0 20px; height: 48px; flex: none; }
+.chip.done { opacity: .6; }

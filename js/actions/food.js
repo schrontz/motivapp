@@ -3,7 +3,7 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast, go } from '../core.js';
-import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood, skilletDecode, guessSlot, mealAt } from '../food.js';
+import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood, skilletDecode, guessSlot, mealAt, amountGrams } from '../food.js';
 import { pickSummary } from '../distance.js';
 import { toDay, today } from '../dates.js';
 
@@ -88,7 +88,9 @@ async function runSearch(q) {
 function addFood(f) {
   const d = S.foodDraft;
   if (!d || !f) return;
-  d.items.push({ code: f.code, name: f.name, grams: defaultGrams(f.code, f.serving), n: per100(f) });
+  const pending = d.skillet && d.skillet.pending;
+  if (d.skillet) d.skillet.pending = null;
+  d.items.push({ code: f.code, name: f.name, grams: pending || defaultGrams(f.code, f.serving), n: per100(f) });
   if (!d.name) d.name = f.name.split(/[,(]/)[0].trim();
   suggestPlants(d, f.ingredients);
   resetSearch();
@@ -327,7 +329,7 @@ function importSkillet(payload) {
     toast('Der Link aus Skillet ließ sich nicht lesen.');
     return;
   }
-  S.foodDraft = { ...newDraft(), name: data.name, home: true, skillet: { portions: data.portions, loading: true, missing: [] } };
+  S.foodDraft = { ...newDraft(), name: data.name, home: true, skillet: { portions: data.portions, loading: true, missing: [], unknown: data.unknown || [], searched: [] } };
   loadSkilletFoods(S.foodDraft, data);
 }
 
@@ -362,6 +364,17 @@ export const clicks = {
   'food-add': ({ el }) => addItem(el.dataset.idx),
   'food-add-off': ({ el }) => addOff(el.dataset.idx),
 
+  // Von Skillet nicht erkannt → hier suchen (in der gerade gewählten Quelle)
+  'food-search-for': ({ id }) => {
+    const d = S.foodDraft;
+    if (d && d.skillet && !d.skillet.searched.includes(id)) d.skillet.searched.push(id);
+    // Menge aus dem Rezept merken: der nächste Treffer bekommt sie (eine Portion)
+    const u = d && d.skillet && d.skillet.unknown.find((x) => x.name === id);
+    const g = u ? amountGrams(u.amount) : null;
+    if (d && d.skillet) d.skillet.pending = g ? Math.max(1, Math.round(g / d.skillet.portions)) : null;
+    runSearch(id);
+    setTimeout(() => document.querySelector('[data-form="food-search"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+  },
   'food-scan': openScanner,
   'scan-close': () => { closeScanner(); render(); },
   'food-grams': ({ el, id }) => grams(el.dataset.idx, id),

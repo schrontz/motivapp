@@ -325,8 +325,13 @@ export function skilletDecode(payload) {
       .filter((z) => Array.isArray(z) && /^[A-Z][0-9A-Z]{3,10}$/.test(String(z[0])) && Number(z[1]) > 0)
       .slice(0, 60)
       .map((z) => ({ code: String(z[0]), grams: Math.max(1, Math.round(Number(z[1]) / portions)), name: String(z[2] || '').slice(0, 80) }));
-    if (!items.length) return null;
-    return { name: String(data.t || 'Aus Skillet').slice(0, 80), portions, items };
+    // Von Skillet nicht erkannt: nur Name + Menge im ganzen Rezept – zum selbst Suchen
+    const unknown = (Array.isArray(data.u) ? data.u : [])
+      .filter((u) => Array.isArray(u) && String(u[0] || '').trim())
+      .slice(0, 20)
+      .map((u) => ({ name: String(u[0]).trim().slice(0, 60), amount: String(u[1] || '').slice(0, 20) }));
+    if (!items.length && !unknown.length) return null;
+    return { name: String(data.t || 'Aus Skillet').slice(0, 80), portions, items, unknown };
   } catch {
     return null;
   }
@@ -372,4 +377,13 @@ export function recentMeals(meals, favorites, T, days = 7, n = 6) {
     if (out.length >= n) break;
   }
   return out;
+}
+
+// „150 g“ / „0,5 l“ aus Skillet → Gramm fürs ganze Rezept (Stück, EL & Co. → null: dann Standardmenge)
+export function amountGrams(text) {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*(g|gramm|kg|ml|l|liter)\s*$/i.exec(String(text || ''));
+  if (!m) return null;
+  const v = Number(m[1].replace(',', '.'));
+  const f = /^(kg|l|liter)$/i.test(m[2]) ? 1000 : 1;
+  return v > 0 ? v * f : null;
 }

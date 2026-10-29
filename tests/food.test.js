@@ -160,3 +160,21 @@ test('Zuletzt gegessen: neueste zuerst, einmal pro Name, ohne Favoriten, nur die
   const r = recentMeals(meals, [{ name: 'Müsli' }], '2026-10-29');
   assert.deepEqual(r.map((x) => x.id), ['b', 'a']);
 });
+
+test('Übergabe aus Skillet: nicht erkannte Zutaten kommen als Namen mit', async () => {
+  const { skilletDecode } = await import('../js/food.js');
+  const d = skilletDecode(skilletEncode({ v: 1, t: 'Chorizo-Risotto', p: 3, z: [['G480100', 60, 'Schalotten']], u: [['Chorizo', '150 g'], ['', 'x'], ['Liebe', '']] }));
+  assert.deepEqual(d.unknown, [{ name: 'Chorizo', amount: '150 g' }, { name: 'Liebe', amount: '' }]);
+  assert.deepEqual(skilletDecode(skilletEncode({ v: 1, t: 'nur Unbekanntes', z: [], u: [['Chorizo', '']] })).items, [], 'auch ohne erkannte Zutat brauchbar');
+  assert.deepEqual(skilletDecode(skilletEncode({ v: 1, t: 'alt', z: [['G480100', 60, 'Zwiebel']] })).unknown, [], 'alte Links ohne u');
+});
+
+test('Menge aus Skillet in Gramm', async () => {
+  const { amountGrams } = await import('../js/food.js');
+  assert.equal(amountGrams('150 g'), 150);
+  assert.equal(amountGrams('0,5 l'), 500);
+  assert.equal(amountGrams('1.2 kg'), 1200);
+  assert.equal(amountGrams('2 Stück'), null);
+  assert.equal(amountGrams('1 EL'), null);
+  assert.equal(amountGrams(''), null);
+});

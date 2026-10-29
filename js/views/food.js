@@ -239,7 +239,13 @@ export function foodForm(S, T) {
     ${d.again ? `<section class="hint-card"><div style="font-size: 15px; font-weight: 700">↻ Nochmal: ${esc(d.name)}</div><p>Von ${d.again === T ? 'heute' : (() => { const y = parseDay(T); y.setDate(y.getDate() - 1); return d.again === toDay(y) ? 'gestern' : esc(shortDate(d.again)); })()}. Portion und „Wann?“ anpassen, dann unten speichern.</p></section>` : ''}
     ${d.skillet ? `<section class="hint-card skillet-hint"><div style="font-size: 15px; font-weight: 700">🍳 Aus Skillet: ${esc(d.name)}</div>
       <p>${d.skillet.loading ? 'Zutaten werden geladen …' : `Mengen für <b>eine Portion</b> (Rezept für ${d.skillet.portions}). Passt etwas nicht, einfach anpassen – dann unten speichern.`}</p>
-      ${d.skillet.missing.length ? `<p class="small">Nicht in den Lebensmittel-Daten, nicht mitgerechnet: ${esc(d.skillet.missing.join(', '))}</p>` : ''}
+      ${(() => {
+        // Nicht erkannt (Skillet) oder Code fehlt hier: antippen = hier suchen
+        const list = [...d.skillet.unknown.map((u) => ({ name: u.name, amount: u.amount })), ...d.skillet.missing.map((n) => ({ name: n, amount: '' }))];
+        if (!list.length) return '';
+        return `<p class="small" style="margin-bottom: 6px"><b>Nicht erkannt</b> – fehlt in den Nährwerten. Antippen sucht hier (oben auch bei Marken):</p>
+          <div class="food-chips">${list.map((u) => `<button type="button" class="chip${d.skillet.searched.includes(u.name) ? ' done' : ''}" data-action="food-search-for" data-id="${esc(u.name)}">🔍 ${esc(u.name)}${u.amount ? ` <span class="muted">· ${esc(u.amount)} im Rezept</span>` : ''}</button>`).join('')}</div>`;
+      })()}
       ${d.items.some((it) => it.grams > PLAUSIBLE_MAX_G) ? `<p class="small"><b>Bitte prüfen</b> – ungewöhnlich viel: ${esc(d.items.filter((it) => it.grams > PLAUSIBLE_MAX_G).map((it) => `${it.name} (${it.grams} g)`).join(', '))}. Vermutlich hat sich Skillet bei der Menge verschätzt.</p>` : ''}</section>` : favBlock}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
       <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : ((S.mealFavorites || []).length && !d.editId ? 'Etwas anderes?' : 'Was hast du gegessen?')}</h2>
