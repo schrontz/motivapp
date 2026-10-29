@@ -204,7 +204,9 @@ export function foodForm(S, T) {
     </section>`;
   return `<div class="app">${backBar(d.editId ? `#/essen/${esc(d.editId)}` : '#/', d.editId ? 'Mahlzeit' : 'Übersicht')}<div class="wrap" style="gap: 14px">
     <h1 style="font-size: 28px; padding: 0 4px">${d.editId ? 'Bearbeiten' : 'Essen eintragen'}</h1>
-    ${favBlock}
+    ${d.skillet ? `<section class="hint-card skillet-hint"><div style="font-size: 15px; font-weight: 700">🍳 Aus Skillet: ${esc(d.name)}</div>
+      <p>${d.skillet.loading ? 'Zutaten werden geladen …' : `Mengen für <b>eine Portion</b> (Rezept für ${d.skillet.portions}). Passt etwas nicht, einfach anpassen – dann unten speichern.`}</p>
+      ${d.skillet.missing.length ? `<p class="small">Nicht in den Lebensmittel-Daten, nicht mitgerechnet: ${esc(d.skillet.missing.join(', '))}</p>` : ''}</section>` : favBlock}
     <section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
       <h2 style="font-size: 17px">${d.items.length ? 'Noch etwas dazu?' : ((S.mealFavorites || []).length && !d.editId ? 'Etwas anderes?' : 'Was hast du gegessen?')}</h2>
       <form class="goal-search" data-form="food-search" role="search">

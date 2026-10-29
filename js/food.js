@@ -307,3 +307,27 @@ export function macroSplit(nutr) {
   if (diff) out.reduce((a, b) => (b.pct > a.pct ? b : a)).pct += diff;
   return out;
 }
+
+// ───────────── Übergabe aus Skillet ─────────────
+// Skillet öffnet  …/motivapp/#/essen-neu/s1.<base64url(JSON)>  mit
+//   { v: 1, t: 'Linsencurry', p: 4, z: [['G480100', 300, 'Zwiebeln'], …] }   (Gramm fürs ganze Rezept, p = Portionen)
+// Motivator rechnet daraus eine Portion und alle Nährwerte selbst (gleicher BLS 4.0).
+export function skilletDecode(payload) {
+  try {
+    const m = /^s1\.([A-Za-z0-9_-]+)$/.exec(String(payload || ''));
+    if (!m) return null;
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((m[1].length + 3) % 4);
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    if (!data || data.v !== 1 || !Array.isArray(data.z)) return null;
+    const portions = Math.max(1, Math.min(50, Number(data.p) || 1));
+    const items = data.z
+      .filter((z) => Array.isArray(z) && /^[A-Z][0-9A-Z]{3,10}$/.test(String(z[0])) && Number(z[1]) > 0)
+      .slice(0, 60)
+      .map((z) => ({ code: String(z[0]), grams: Math.max(1, Math.round(Number(z[1]) / portions)), name: String(z[2] || '').slice(0, 80) }));
+    if (!items.length) return null;
+    return { name: String(data.t || 'Aus Skillet').slice(0, 80), portions, items };
+  } catch {
+    return null;
+  }
+}

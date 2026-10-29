@@ -116,3 +116,24 @@ test('Ring: Kohlenhydrate, Eiweiß, Fett nach Energie, Summe 100', () => {
   assert.equal(macroSplit(null), null);
   assert.equal(macroSplit({ protein: 10, carbs: null, fat: null })[1].pct, 100);
 });
+
+// So baut Skillet den Link (gleiche Logik wie motivatorLink in skillet/naehrwerte.js)
+const skilletEncode = (obj) => {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return 's1.' + btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+test('Übergabe aus Skillet: eine Portion, Umlaute, Unsinn fliegt raus', async () => {
+  const { skilletDecode } = await import('../js/food.js');
+  const p = skilletEncode({ v: 1, t: 'Linsencurry mit Kürbis', p: 4, z: [['G480100', 300, 'Zwiebeln'], ['H722000', 400, 'Rote Linsen'], ['xx', 100, 'kaputt'], ['B100000', 0, 'nichts']] });
+  const d = skilletDecode(p);
+  assert.equal(d.name, 'Linsencurry mit Kürbis');
+  assert.equal(d.portions, 4);
+  assert.deepEqual(d.items, [{ code: 'G480100', grams: 75, name: 'Zwiebeln' }, { code: 'H722000', grams: 100, name: 'Rote Linsen' }]);
+  assert.equal(skilletDecode(skilletEncode({ v: 1, t: 'x', z: [['G480100', 50, 'Zwiebel']] })).items[0].grams, 50, 'ohne Portionen = ganzes Rezept');
+  assert.equal(skilletDecode('s1.!!!'), null);
+  assert.equal(skilletDecode(skilletEncode({ v: 2, z: [] })), null);
+  assert.equal(skilletDecode('irgendwas'), null);
+});

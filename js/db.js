@@ -91,6 +91,13 @@ export async function loadFoodData() {
 }
 
 // Lebensmittel suchen: jedes Wort muss vorkommen (Reihenfolge egal), Mehrzahl/Synonyme siehe food.js
+// BLS-Zeilen zu bestimmten Codes (Übergabe aus Skillet)
+export async function foodsByCodes(codes) {
+  if (!codes.length) return [];
+  if (isDemo) return DEMO_FOODS.filter((f) => codes.includes(f.code));
+  return check(await client.from('bls_foods').select('*').in('code', codes));
+}
+
 export async function searchFoods(q) {
   const terms = searchTerms(q);
   if (!terms.length) return [];

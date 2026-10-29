@@ -3,7 +3,7 @@
 
 import * as db from '../db.js';
 import { S, local, render, persist, toast, go } from '../core.js';
-import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood } from '../food.js';
+import { nutrOf, per100, guessPlants, defaultGrams, plantWikiTitle, offToFood, skilletDecode } from '../food.js';
 import { pickSummary } from '../distance.js';
 import { toDay } from '../dates.js';
 
@@ -307,8 +307,43 @@ async function loadPlantWiki(name) {
 }
 
 // Seite „Gegessen“ geöffnet: Entwurf anlegen, falls keiner da ist. Seite verlassen: Entwurf und Suche weg.
-export function ensureDraft() {
+export function ensureDraft(payload) {
+  if (payload && payload.startsWith('s1.')) { importSkillet(payload); return; }
   if (!S.foodDraft) S.foodDraft = newDraft();
+}
+
+// Übergabe aus Skillet: Rezept mit Zutaten (BLS-Code + Gramm) → Formular ausgefüllt, eine Portion, selbst gekocht
+function importSkillet(payload) {
+  // Adresse gleich kürzen – Neuladen soll nicht nochmal übernehmen, Zurück nicht im Kreis führen
+  try { history.replaceState(null, '', location.pathname + location.search + '#/essen-neu'); } catch { /* egal */ }
+  const data = skilletDecode(payload);
+  if (!data) {
+    S.foodDraft = newDraft();
+    toast('Der Link aus Skillet ließ sich nicht lesen.');
+    return;
+  }
+  S.foodDraft = { ...newDraft(), name: data.name, home: true, skillet: { portions: data.portions, loading: true, missing: [] } };
+  loadSkilletFoods(S.foodDraft, data);
+}
+
+async function loadSkilletFoods(d, data) {
+  let rows = [];
+  try {
+    rows = await db.foodsByCodes([...new Set(data.items.map((i) => i.code))]);
+  } catch (err) {
+    console.error(err);
+    toast('Die Lebensmittel-Daten ließen sich gerade nicht laden – Internet da?');
+  }
+  if (S.foodDraft !== d) return; // inzwischen woanders
+  const byCode = new Map(rows.map((r) => [r.code, r]));
+  for (const it of data.items) {
+    const f = byCode.get(it.code);
+    if (!f) { d.skillet.missing.push(it.name || it.code); continue; }
+    d.items.push({ code: it.code, name: it.name || f.name, grams: it.grams, n: per100(f) });
+  }
+  d.skillet.loading = false;
+  suggestPlants(d);
+  render();
 }
 export function leaveDraft() {
   S.foodDraft = null;
