@@ -10,8 +10,9 @@ import { reduceCard } from './reduce.js';
 import { alcoholCard, alcoholSheet } from './alcohol.js';
 import { foodCard } from './food.js';
 import { findCard } from './finds.js';
+import { weekChanges, changeText, isStrengthHabit } from '../strength.js';
 import { homeOrder } from '../home.js';
-import { bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
+import { alphaOn, bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
 export function tilesSection(S, T) {
   const show = (S.profile && S.profile.tiles) || ['steps', 'training'];
@@ -135,6 +136,7 @@ export function habitRow(S, item) {
     <a class="row-main" href="#/habit/${esc(h.id)}">
       <div class="row-title"><span>${esc(h.name)}</span>${pills}</div>
       <div class="row-sub">${esc(sub)}</div>
+      ${!item.hit && (S.weekChanges || []).length && isStrengthHabit(h) ? `<div class="row-up">↑ Diese Woche steigern: ${esc(S.weekChanges.map(changeText).join(' · '))}</div>` : ''}
       ${progress}
     </a>
     <button type="button" class="check" data-action="${action}" data-id="${esc(h.id)}" data-state="${item.state}"${btnStyle} aria-label="${esc(aria)}">${btnIcon}</button>
@@ -149,6 +151,8 @@ export function overview(S, T) {
   const cat = usedCats.some((c) => c.id === S.cat) ? S.cat : 'all';
   const shown = cat === 'all' ? active : active.filter((h) => h.category_id === cat);
   const items = todayItems(shown, S.idx, S.pauses, T);
+  // Steigerungspläne: was ist diese Woche höher als letzte? (für die Sport-Gewohnheit)
+  S.weekChanges = alphaOn(S) ? weekChanges(S.plans || [], S.strength || [], T) : [];
   const ids = new Set(shown.map((h) => h.id));
   const total = totalHits(S.logs.filter((l) => ids.has(l.habit_id) || cat === 'all'));
   const name = S.profile && S.profile.display_name ? `, ${esc(S.profile.display_name)}` : '';

@@ -13,9 +13,10 @@ test('Offen: tägliche Gewohnheit ohne Eintrag, Mini und erledigt zählen nicht'
   assert.deepEqual(openForReminder(habits, logs, [], MO).map((o) => o.name), ['Lesen', 'Wasser']);
 });
 
-test('Draußen: automatisch (Withings), abgewählt, archiviert, heute nicht dran', () => {
+test('Draußen: Zahlen von der Uhr, abgewählt, archiviert, heute nicht dran – Training mit Auto-Abhaken bleibt drin', () => {
+  assert.deepEqual(openForReminder([H('Sport', { auto_categories: [16] })], [], [], MO).map((o) => o.name), ['Sport']);
   const habits = [
-    H('Schritte', { auto_metric: 'steps' }), H('Sport', { auto_categories: [16] }), H('Aus', { remind: false }),
+    H('Schritte', { auto_metric: 'steps' }), H('Aus', { remind: false }),
     H('Alt', { archived: true }), H('Mi', { schedule: 'weekdays', schedule_days: [3] }), H('Neu', { start_day: '2026-10-27' })
   ];
   assert.deepEqual(openForReminder(habits, [], [], MO), []);
@@ -111,4 +112,14 @@ test('„meist gegen“: Median, gerundet auf 10 Minuten; Nachgetragenes und Aut
   assert.deepEqual(usualTime(more, 'L', MO, localOf), { n: 5, min: 460 });
   // älter als 14 Tage zählt nicht
   assert.equal(usualTime(more, 'L', '2026-11-20', localOf).n, 0);
+});
+
+test('Steigerung in der Erinnerung: nur wenn Sport offen ist', async () => {
+  const sport = { name: 'Sport', habit: H('Sport', { auto_categories: [16] }) };
+  const lesen = { name: 'Lesen', habit: H('Lesen') };
+  const ch = [{ name: 'Bankdrücken', mode: 'kg', sets: 3, reps: 24, kg: 20, from: { reps: 22, kg: 20 } }];
+  assert.equal(reminderText([lesen, sport], ch).body, 'Lesen, Sport. ↑ Diese Woche höher: Bankdrücken 3 × 24 (statt 22).');
+  assert.equal(reminderText([lesen], ch).body, 'Lesen.', 'Sport schon erledigt → kein Hinweis');
+  const many = [1, 2, 3, 4].map((i) => ({ ...ch[0], name: 'Übung ' + i }));
+  assert.match(reminderText([sport], many).body, /Übung 1 3 × 24 \(statt 22\), Übung 2 3 × 24 \(statt 22\), und 2 weitere\.$/);
 });

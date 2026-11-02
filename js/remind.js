@@ -4,18 +4,23 @@
 // Regeln (siehe Mockup „Erinnerungen“):
 // - eine Nachricht am Tag, nur wenn etwas offen ist
 // - Pausentag für alles → still; pausierte Gewohnheit → nicht dabei
-// - Automatische Gewohnheiten (Withings) bleiben draußen
+// - Zahlen von der Uhr (Schritte & Co.) bleiben draußen; Training mit Auto-Abhaken darf erinnert werden
 // - Woche/Monat: erst dabei, wenn es knapp wird (noch genau so viele freie Tage wie fehlende Male)
 // - Mini zählt als geschafft
 
 import { todayItems, indexLogs, isPaused, isPeriodic } from './stats.js';
 import { eachDay, weekStart, addDays, monthStart, daysInMonth } from './dates.js';
+import { weekChanges, changeText, isStrengthHabit } from './strength.js';
+
+export { weekChanges }; // auch für die Edge Function (eingebettete Kopie)
 
 export const DEFAULT_TIME = 20 * 60; // Minuten seit Mitternacht
 export const MIN_USUAL = 5; // ab so vielen Einträgen zeigt die App „meist gegen“
 export const USUAL_DAYS = 14;
 
-export const isAuto = (h) => !!h.auto_metric || (Array.isArray(h.auto_categories) && h.auto_categories.length > 0);
+// Zahlen von der Uhr (Schritte, Minuten, Strecke) wachsen von selbst – daran erinnern ergibt keinen Sinn.
+// Gewohnheiten, die sich nach einem Training selbst abhaken (Withings-Trainingsart), sind vorher offen: die dürfen erinnert werden.
+export const isAuto = (h) => !!h.auto_metric;
 export const remindable = (h) => !h.archived && !isAuto(h) && h.remind !== false;
 export const hasMini = (h) => !!(h.mini_text || h.mini_value != null);
 
@@ -52,8 +57,16 @@ const listNames = (names) => {
   return `${names.slice(0, 3).join(', ')} und ${names.length - 3} weitere`;
 };
 
+// „↑ Diese Woche höher: …“ – nur, wenn die Sport-Gewohnheit offen ist und ein Plan diese Woche steigt
+export function trainingNote(open, changes = []) {
+  if (!changes.length || !open.some((o) => isStrengthHabit(o.habit))) return '';
+  const list = changes.slice(0, 2).map(changeText);
+  if (changes.length > 2) list.push(`und ${changes.length - 2} weitere`);
+  return `↑ Diese Woche höher: ${list.join(', ')}`;
+}
+
 // Text der Nachricht – null, wenn nichts offen ist
-export function reminderText(open) {
+export function reminderText(open, changes = []) {
   if (!open.length) return null;
   const daily = open.filter((o) => !o.need);
   const periodic = open.filter((o) => o.need);
@@ -62,6 +75,8 @@ export function reminderText(open) {
   for (const o of periodic) parts.push(`${o.name} – noch ${o.need}× ${o.word}`);
   let body = parts.join(' · ');
   if (!/[.!?]$/.test(body)) body += '.';
+  const note = trainingNote(open, changes);
+  if (note) body += ` ${note}.`;
   if (open.some((o) => hasMini(o.habit))) body += ' Mini zählt auch 🙂';
   return { title: periodic.length ? 'Noch offen' : 'Noch offen heute', body };
 }

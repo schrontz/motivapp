@@ -227,3 +227,25 @@ test('Satz-Kacheln: kurz, auch bei Körpergewicht', async () => {
   assert.equal(setCellText({ kind: 'time' }, { sec: 60 }), '1 Min');
   assert.equal(setCellText({ kind: 'time' }, { sec: 55 }), '55 s');
 });
+
+test('Was ist diese Woche neu: Steigerung gegenüber letzter Woche, nur solange nicht geschafft', async () => {
+  const { weekChanges, changeText, isStrengthHabit } = await import('../js/strength.js');
+  // Plan: 3 × 20 mit 20 kg, +2 jede Woche
+  const plan = { exercise: 'Bankdrücken', equipment: 'Langhantel', sets: 3, start_reps: 20, kg: 20, plus_reps: 2, every_weeks: 1, max_reps: 30, kg_step: 2.5, started_on: '2026-10-19', created_at: '2026-10-19T08:00:00Z' };
+  const ex = (reps) => ({ name: 'Bankdrücken', equipment: 'Langhantel', kind: 'kg_reps', sets: [1, 2, 3].map(() => ({ kg: 20, reps })) });
+  const sess = (day, reps) => ({ day, started_at: `${day}T07:00:00Z`, exercises: [ex(reps)] });
+  // Woche 19.10.: 20 geschafft → Woche 26.10.: 22 geschafft → diese Woche (2.11.): 24
+  const sessions = [sess('2026-10-21', 20), sess('2026-10-28', 22)];
+  const c = weekChanges([plan], sessions, '2026-11-02');
+  assert.equal(c.length, 1);
+  assert.equal(changeText(c[0]), 'Bankdrücken 3 × 24 (statt 22)');
+  // Diese Woche schon geschafft → kein Hinweis mehr
+  assert.equal(weekChanges([plan], [...sessions, sess('2026-11-02', 24)], '2026-11-02').length, 0);
+  // Letzte Woche verfehlt (20 statt 22) → gleiches Ziel → kein Hinweis
+  assert.equal(weekChanges([plan], [sess('2026-10-21', 20), sess('2026-10-28', 20)], '2026-11-02').length, 0);
+  assert.equal(changeText({ name: 'Kniebeuge', mode: 'kg', sets: 3, reps: 10, kg: 62.5, from: { reps: 20, kg: 60 } }), 'Kniebeuge 3 × 10 mit 62,5 kg (statt 60 kg)');
+  assert.equal(changeText({ name: 'Plank', mode: 'sec', sets: 3, reps: 50, kg: 0, from: { reps: 45, kg: 0 } }), 'Plank 3 × 50 s (statt 45 s)');
+  assert.equal(isStrengthHabit({ name: 'Sport', auto_categories: [16, 17] }), true);
+  assert.equal(isStrengthHabit({ name: 'Lesen' }), false);
+  assert.equal(isStrengthHabit({ name: 'Training' }), true);
+});

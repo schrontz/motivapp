@@ -460,3 +460,39 @@ export function sessionTarget(plan, history, entry, T) {
   const ok = weekOk([entry], wk, res.mode);
   return { reps: wk.reps, kg: wk.kg, sets: wk.sets, ok, mode: res.mode };
 }
+
+// ───────────── Was ist diese Woche neu? ─────────────
+// Für den Hinweis „↑ diese Woche steigern“ (Übersicht und Erinnerung):
+// Übungen, deren Ziel in dieser Woche höher ist als letzte Woche – und die diese Woche noch nicht geschafft sind.
+export function weekChanges(plans, sessions, T) {
+  const now = weekStart(T);
+  const prevWeek = addDays(now, -7);
+  const out = [];
+  for (const plan of plans || []) {
+    const hist = exerciseHistory(sessions || [], exerciseKey({ name: plan.exercise, equipment: plan.equipment }));
+    const res = progress(plan, hist, T);
+    const cur = res.weeks.get(now);
+    const prev = res.weeks.get(prevWeek);
+    if (!cur || !prev || cur.result === 'done') continue;
+    if (cur.reps === prev.reps && cur.kg === prev.kg) continue; // festigen oder Stufe wiederholen: nichts Neues
+    out.push({ name: plan.exercise, mode: res.mode, sets: cur.sets, reps: cur.reps, kg: cur.kg, from: { reps: prev.reps, kg: prev.kg } });
+  }
+  return out;
+}
+
+const kgTxt = (n) => `${String(n).replace('.', ',')} kg`;
+
+// „Bankdrücken 3 × 24 (statt 22)“ / „Kniebeuge 3 × 10 mit 62,5 kg (statt 60 kg)“ / „Plank 3 × 50 s (statt 45 s)“
+export function changeText(c) {
+  if (c.mode === 'sec') return `${c.name} ${c.sets} × ${c.reps} s (statt ${c.from.reps} s)`;
+  if (c.mode === 'reps') return `${c.name} ${c.sets} × ${c.reps} (statt ${c.from.reps})`;
+  if (c.kg !== c.from.kg) return `${c.name} ${c.sets} × ${c.reps} mit ${kgTxt(c.kg)} (statt ${kgTxt(c.from.kg)})`;
+  return `${c.name} ${c.sets} × ${c.reps} (statt ${c.from.reps})`;
+}
+
+// Ist das die Gewohnheit fürs Krafttraining? (Auto-Abhaken bei Krafttraining/Gymnastik, sonst am Namen)
+export function isStrengthHabit(h) {
+  const cats = Array.isArray(h.auto_categories) ? h.auto_categories : [];
+  if (cats.includes(16) || cats.includes(17)) return true;
+  return !cats.length && /sport|training|kraft|gym|fitness/i.test(h.name || '');
+}

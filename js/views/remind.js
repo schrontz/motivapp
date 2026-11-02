@@ -2,7 +2,7 @@
 
 import { svg, UI_ICONS } from '../icons.js';
 import { esc } from './ui.js';
-import { openForReminder, reminderText, timeText, usualTime, isAuto, MIN_USUAL, DEFAULT_TIME } from '../remind.js';
+import { openForReminder, reminderText, timeText, usualTime, isAuto, MIN_USUAL, DEFAULT_TIME, weekChanges } from '../remind.js';
 import { isPeriodic } from '../stats.js';
 
 export const hasRemindSchema = (S) => !!(S.profile && 'remind_on' in S.profile);
@@ -50,14 +50,14 @@ export function remindView(S, T) {
   const habits = S.habits.filter((h) => !h.archived);
   const rows = habits.map((h) => {
     const auto = isAuto(h);
-    const sched = isPeriodic(h) ? 'nur wenn es in der Woche knapp wird' : '';
+    const sched = isPeriodic(h) ? 'nur wenn es in der Woche knapp wird' : (Array.isArray(h.auto_categories) && h.auto_categories.length ? 'hakt sich nach dem Training selbst ab' : '');
     return `<label class="switch-row remind-row${auto ? ' is-auto' : ''}">
       <span><span style="display: block; font-size: 16px; font-weight: 600">${esc(h.name)}</span>
         <span class="small muted">${auto ? 'kommt von der Uhr' : sched}</span></span>
       <input type="checkbox" class="reduce-check" data-action="remind-habit" data-id="${esc(h.id)}"${!auto && h.remind !== false ? ' checked' : ''}${auto ? ' disabled' : ''} aria-label="${esc(h.name)} in die Erinnerung">
     </label>`;
   }).join('');
-  const text = reminderText(openForReminder(S.habits, S.logs, S.pauses, T));
+  const text = reminderText(openForReminder(S.habits, S.logs, S.pauses, T), S.plans ? weekChanges(S.plans, S.strength || [], T) : []);
   const preview = text
     ? `<div class="remind-note"><span class="remind-app">M</span><div style="min-width: 0; flex: 1">
         <div style="display: flex; justify-content: space-between; font-size: 13px"><b>Motivator</b><span class="muted">${timeText(at)}</span></div>

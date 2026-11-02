@@ -599,3 +599,4 @@ button.dest-row:first-child { border-top: 0; }
 .find-guess .input { flex: 1; min-width: 0; height: 48px; }
 .find-guess .btn { width: auto; padding: 0 20px; height: 48px; flex: none; }
 .chip.done { opacity: .6; }
+.row-up { font-size: 13px; font-weight: 600; color: var(--c-teal); margin-top: 3px; line-height: 1.35; }

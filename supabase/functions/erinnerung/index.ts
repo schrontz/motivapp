@@ -143,7 +143,18 @@ async function openText(db: any, userId: string, day: string) {
     db.from('pauses').select('habit_id, start_day, end_day').eq('user_id', userId).gte('end_day', from)
   ]);
   for (const r of [habits, logs, pauses]) if (r.error) throw r.error;
-  return reminderText(openForReminder(habits.data, logs.data, pauses.data, day));
+  const open = openForReminder(habits.data, logs.data, pauses.data, day);
+  // Steigerungspläne (Alpha Progression): „↑ Diese Woche höher: …“ – fehlt das Modul, einfach ohne
+  let changes: any[] = [];
+  try {
+    const plans = await db.from('exercise_plans').select('*').eq('user_id', userId);
+    if (!plans.error && (plans.data || []).length && open.length) {
+      const since = minusDays((plans.data as any[]).map((p) => p.started_on).sort()[0] || day, 7);
+      const sessions = await db.from('strength_sessions').select('day, started_at, exercises').eq('user_id', userId).gte('day', since);
+      if (!sessions.error) changes = weekChanges(plans.data, sessions.data || [], day);
+    }
+  } catch (e) { console.warn('Steigerung nicht verfügbar', e); }
+  return reminderText(open, changes);
 }
 
 async function deliver(db: any, userId: string, message: unknown, keys: any, fetcher: typeof fetch) {
@@ -388,10 +399,177 @@ function todayItems(habits, idx, pauses, day) {
   return items;
 }
 
+var CATEGORY_GROUPS = [
+  { id: "kraft", label: "Krafttraining", cats: [16, 17] },
+  { id: "run", label: "Laufen", cats: [2, 307] },
+  { id: "bike", label: "Radfahren", cats: [6, 308] },
+  { id: "swim", label: "Schwimmen", cats: [7] },
+  { id: "walk", label: "Gehen & Wandern", cats: [1, 306, 3] },
+  { id: "other", label: "Sonstiges", cats: [-1] }
+];
+var GROUPED = new Set(CATEGORY_GROUPS.flatMap((g) => g.cats).filter((c) => c > 0));
+
+function exerciseKey(e) {
+  return `${e.name}|${e.equipment || ""}`;
+}
+function exerciseHistory(sessions, key) {
+  const out = [];
+  for (const s of sessions) {
+    for (const e of s.exercises || []) {
+      if (exerciseKey(e) === key) out.push({ session: s, day: s.day, started_at: s.started_at, ex: e });
+    }
+  }
+  return out.sort((a, b) => a.started_at < b.started_at ? -1 : 1);
+}
+var MATCH_WINDOW = 20 * 6e4;
+function planMode(history) {
+  const last = history.length ? history[history.length - 1].ex : null;
+  if (!last) return "kg";
+  if (last.kind === "time") return "sec";
+  if (last.kind === "reps") return "reps";
+  return "kg";
+}
+function setValue(s, mode) {
+  return mode === "sec" ? s.sec ?? 0 : s.reps ?? 0;
+}
+function weekOk(entries, target, mode = "kg") {
+  return entries.some((h) => {
+    const good = (h.ex.sets || []).filter((s) => (mode !== "kg" || (s.kg ?? 0) >= target.kg - 1e-9) && setValue(s, mode) >= target.reps).length;
+    return good >= target.sets;
+  });
+}
+function round1(n) {
+  return Math.round(n * 100) / 100;
+}
+function planStart(plan) {
+  const s = weekStart(plan.started_on);
+  if (!plan.created_at) return s;
+  const c = weekStart(toLocalDay(plan.created_at));
+  return c > s ? c : s;
+}
+function toLocalDay(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function progress(plan, history, T, mode = planMode(history)) {
+  const p = {
+    sets: Number(plan.sets),
+    start: Number(plan.start_reps),
+    kg: Number(plan.kg),
+    plus: Number(plan.plus_reps),
+    every: Math.max(1, Number(plan.every_weeks)),
+    max: Number(plan.max_reps),
+    kgStep: Number(plan.kg_step),
+    mode
+  };
+  const step = (st2) => {
+    const o = { ...st2, streak: st2.streak + 1 };
+    if (o.streak >= p.every) {
+      o.streak = 0;
+      if (mode === "kg") {
+        o.reps += p.plus;
+        if (o.reps > p.max) {
+          o.reps = p.start;
+          o.kg = round1(o.kg + p.kgStep);
+        }
+      } else if (o.reps < p.max) {
+        o.reps = Math.min(p.max, o.reps + p.plus);
+      }
+    }
+    return o;
+  };
+  const byWeek = /* @__PURE__ */ new Map();
+  for (const h of history) {
+    const wk = weekStart(h.day);
+    if (!byWeek.has(wk)) byWeek.set(wk, []);
+    byWeek.get(wk).push(h);
+  }
+  let st = { reps: p.start, kg: mode === "kg" ? p.kg : 0, streak: 0 };
+  const weeks = /* @__PURE__ */ new Map();
+  const nowWeek = weekStart(T);
+  const first = planStart(plan);
+  for (let wk = first; wk <= nowWeek; wk = addDays(wk, 7)) {
+    const target = { reps: st.reps, kg: st.kg, sets: p.sets, consolidating: st.streak > 0 };
+    const entries = byWeek.get(wk) || [];
+    const result = entries.length ? weekOk(entries, target, mode) ? "done" : "missed" : "none";
+    weeks.set(wk, { ...target, result });
+    if (wk === nowWeek) break;
+    if (result === "done") st = step(st);
+  }
+  const current = weeks.get(nowWeek) || { reps: st.reps, kg: st.kg, sets: p.sets, consolidating: st.streak > 0, result: "none" };
+  const nx = step(st);
+  return {
+    mode,
+    weeks,
+    current: { ...current, done: current.result === "done", atMax: mode !== "kg" && current.reps >= p.max },
+    next: { reps: nx.reps, kg: nx.kg, consolidating: nx.streak > 0 },
+    ladder: ladder(p, current.reps, st.streak, current.kg),
+    weeksToNextKg: weeksLeft(p, current.reps, st.streak)
+  };
+}
+function weeksLeft(p, reps, streak) {
+  if (p.mode && p.mode !== "kg" && reps >= p.max) return 0;
+  const levels = Math.floor((p.max - reps) / p.plus);
+  if (p.mode && p.mode !== "kg") return Math.ceil((p.max - reps) / p.plus) * p.every - streak;
+  return levels * p.every + (p.every - streak);
+}
+function ladder(p, reps, streak, kg) {
+  const unit = p.mode === "sec" ? " s" : "";
+  const all = [];
+  for (let r = p.start; r <= p.max; r += p.plus) for (let i = 0; i < p.every; i += 1) all.push(r);
+  if (p.mode && p.mode !== "kg" && all[all.length - 1] !== p.max) for (let i = 0; i < p.every; i += 1) all.push(p.max);
+  let pos = Math.round((reps - p.start) / p.plus * p.every + streak);
+  if (p.mode && p.mode !== "kg" && reps >= p.max) pos = all.indexOf(p.max) + Math.min(streak, p.every - 1);
+  let items = all.map((r, i) => ({ txt: String(r) + (i === all.length - 1 ? unit : ""), state: i < pos ? "done" : i === pos ? "now" : "next" }));
+  if (items.length > 10) {
+    const from = Math.max(0, pos - 2);
+    const to = Math.min(items.length - 1, pos + 4);
+    const mid = items.slice(from, to + 1);
+    items = [
+      ...from > 0 ? [{ txt: "\u2026", state: "done" }] : [],
+      ...mid,
+      ...to < items.length - 2 ? [{ txt: "\u2026", state: "next" }] : [],
+      ...to < items.length - 1 ? [items[items.length - 1]] : []
+    ];
+  }
+  if (!p.mode || p.mode === "kg") {
+    const stepTxt = String(round1(p.kgStep)).replace(".", ",");
+    items.push({ txt: `+${stepTxt} kg`, state: "next", kg: round1(kg + p.kgStep) });
+  }
+  return items;
+}
+function weekChanges(plans, sessions, T) {
+  const now = weekStart(T);
+  const prevWeek = addDays(now, -7);
+  const out = [];
+  for (const plan of plans || []) {
+    const hist = exerciseHistory(sessions || [], exerciseKey({ name: plan.exercise, equipment: plan.equipment }));
+    const res = progress(plan, hist, T);
+    const cur = res.weeks.get(now);
+    const prev = res.weeks.get(prevWeek);
+    if (!cur || !prev || cur.result === "done") continue;
+    if (cur.reps === prev.reps && cur.kg === prev.kg) continue;
+    out.push({ name: plan.exercise, mode: res.mode, sets: cur.sets, reps: cur.reps, kg: cur.kg, from: { reps: prev.reps, kg: prev.kg } });
+  }
+  return out;
+}
+var kgTxt = (n) => `${String(n).replace(".", ",")} kg`;
+function changeText(c) {
+  if (c.mode === "sec") return `${c.name} ${c.sets} \xD7 ${c.reps} s (statt ${c.from.reps} s)`;
+  if (c.mode === "reps") return `${c.name} ${c.sets} \xD7 ${c.reps} (statt ${c.from.reps})`;
+  if (c.kg !== c.from.kg) return `${c.name} ${c.sets} \xD7 ${c.reps} mit ${kgTxt(c.kg)} (statt ${kgTxt(c.from.kg)})`;
+  return `${c.name} ${c.sets} \xD7 ${c.reps} (statt ${c.from.reps})`;
+}
+function isStrengthHabit(h) {
+  const cats = Array.isArray(h.auto_categories) ? h.auto_categories : [];
+  if (cats.includes(16) || cats.includes(17)) return true;
+  return !cats.length && /sport|training|kraft|gym|fitness/i.test(h.name || "");
+}
+
 var DEFAULT_TIME = 20 * 60;
 var MIN_USUAL = 5;
 var USUAL_DAYS = 14;
-var isAuto = (h) => !!h.auto_metric || Array.isArray(h.auto_categories) && h.auto_categories.length > 0;
+var isAuto = (h) => !!h.auto_metric;
 var remindable = (h) => !h.archived && !isAuto(h) && h.remind !== false;
 var hasMini = (h) => !!(h.mini_text || h.mini_value != null);
 function allPaused(pauses, day) {
@@ -425,7 +603,13 @@ var listNames = (names) => {
   if (names.length <= 4) return names.join(", ");
   return `${names.slice(0, 3).join(", ")} und ${names.length - 3} weitere`;
 };
-function reminderText(open) {
+function trainingNote(open, changes = []) {
+  if (!changes.length || !open.some((o) => isStrengthHabit(o.habit))) return "";
+  const list = changes.slice(0, 2).map(changeText);
+  if (changes.length > 2) list.push(`und ${changes.length - 2} weitere`);
+  return `\u2191 Diese Woche h\xF6her: ${list.join(", ")}`;
+}
+function reminderText(open, changes = []) {
   if (!open.length) return null;
   const daily = open.filter((o) => !o.need);
   const periodic = open.filter((o) => o.need);
@@ -434,6 +618,8 @@ function reminderText(open) {
   for (const o of periodic) parts.push(`${o.name} \u2013 noch ${o.need}\xD7 ${o.word}`);
   let body = parts.join(" \xB7 ");
   if (!/[.!?]$/.test(body)) body += ".";
+  const note = trainingNote(open, changes);
+  if (note) body += ` ${note}.`;
   if (open.some((o) => hasMini(o.habit))) body += " Mini z\xE4hlt auch \u{1F642}";
   return { title: periodic.length ? "Noch offen" : "Noch offen heute", body };
 }
