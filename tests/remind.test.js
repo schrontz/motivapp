@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openForReminder, reminderText, isDue, usualTime, timeText, parseTime, zonedNow, remindable } from '../js/remind.js';
+import { openForReminder, reminderText, isDue, usualTime, timeText, parseTime, zonedNow, remindable, usualDueNow, usualText, usualFor } from '../js/remind.js';
 
 const H = (id, extra = {}) => ({ id, name: id, schedule: 'daily', start_day: '2026-10-01', archived: false, ...extra });
 const log = (habit_id, day, status = 'done', extra = {}) => ({ habit_id, day, status, ...extra });
@@ -122,4 +122,50 @@ test('Steigerung in der Erinnerung: nur wenn Sport offen ist', async () => {
   assert.equal(reminderText([lesen], ch).body, 'Lesen.', 'Sport schon erledigt → kein Hinweis');
   const many = [1, 2, 3, 4].map((i) => ({ ...ch[0], name: 'Übung ' + i }));
   assert.match(reminderText([sport], many).body, /Übung 1 3 × 24 \(statt 22\), Übung 2 3 × 24 \(statt 22\), und 2 weitere\.$/);
+});
+
+test('Eigene Erinnerung zur üblichen Zeit: Fenster, einmal am Tag, Woche nur am „eigenen“ Wochentag oder wenn knapp', () => {
+  const localOf = (iso) => ({ day: iso.slice(0, 10), min: Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16)) });
+  // Lesen meist gegen 8:40 (fünf Tage vor Montag)
+  const days = ['2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'];
+  const logs = days.map((d) => log('Lesen', d, 'done', { created_at: `${d}T08:40:00` }));
+  const lesen = H('Lesen', { remind_mode: 'usual', mini_text: '1 Seite' });
+  const due = (habits, l, now, day = MO) => usualDueNow(habits, l, [], day, now, localOf).map((o) => o.name);
+  assert.deepEqual(due([lesen], logs, 8 * 60 + 9), [], 'vor 8:10 noch nicht');
+  assert.deepEqual(due([lesen], logs, 8 * 60 + 10), ['Lesen']);
+  assert.deepEqual(due([lesen], logs, 9 * 60 + 40), [], 'nach 90 Min. nicht mehr');
+  assert.deepEqual(due([{ ...lesen, remind_last: MO }], logs, 8 * 60 + 15), [], 'schon erinnert');
+  assert.deepEqual(due([lesen], [...logs, log('Lesen', MO)], 8 * 60 + 15), [], 'schon erledigt');
+  assert.deepEqual(due([{ ...lesen, remind_mode: 'daily' }], logs, 8 * 60 + 15), [], 'Passt so = Abend');
+  assert.deepEqual(due([lesen], logs.slice(0, 4), 8 * 60 + 15), [], 'lernt noch');
+  const o = usualDueNow([lesen], logs, [], MO, 8 * 60 + 15, localOf)[0];
+  assert.deepEqual(usualText(o), { title: 'Lesen', body: 'Meist machst du das gegen 8:40. Mini zählt auch 🙂' });
+  // am Abend nicht noch einmal
+  assert.deepEqual(openForReminder([{ ...lesen, remind_last: MO }, H('Dehnen')], [], [], MO).map((x) => x.name), ['Dehnen']);
+
+  // Sport 3× pro Woche, meist montags und mittwochs gegen 7:40
+  const sport = H('Sport', { schedule: 'per_week', schedule_count: 3, remind_mode: 'usual', auto_categories: [16] });
+  const sl = ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-21', '2026-10-14', '2026-10-07']
+    .map((d) => log('Sport', d, 'done', { created_at: `${d}T07:40:00` }));
+  // für die Uhrzeit zählen nur die letzten 14 Tage (ab 13.): 14., 19., 21. → noch zwei dazu
+  sl.push(log('Sport', '2026-10-16', 'done', { created_at: '2026-10-16T07:40:00' }), log('Sport', '2026-10-23', 'done', { created_at: '2026-10-23T07:40:00' }));
+  assert.deepEqual(due([sport], sl, 7 * 60 + 10), ['Sport'], 'Montag ist sein Tag');
+  assert.deepEqual(due([sport], sl, 7 * 60 + 10, '2026-10-27'), [], 'Dienstag nicht – und noch nicht knapp');
+  const ch = [{ name: 'Bankdrücken', mode: 'kg', sets: 3, reps: 24, kg: 20, from: { reps: 22, kg: 20 } }];
+  const s = usualDueNow([sport], sl, [], MO, 7 * 60 + 10, localOf)[0];
+  assert.deepEqual(usualText(s, ch), { title: 'Sport', body: 'Meist um diese Zeit – noch 3× diese Woche. ↑ Diese Woche höher: Bankdrücken 3 × 24 (statt 22).' });
+});
+
+test('Training mit Auto-Abhaken: „meist gegen“ aus der Startzeit des Trainings', () => {
+  const localOf = (iso) => ({ day: iso.slice(0, 10), min: Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16)) });
+  const sport = H('Sport', { auto_categories: [16], remind_mode: 'usual' });
+  const w = (day, t, category = 16, duration_min = 40) => ({ day, start_at: `${day}T${t}:00`, category, duration_min });
+  const workouts = [w('2026-10-19', '07:35'), w('2026-10-19', '18:00'), w('2026-10-21', '07:45'), w('2026-10-23', '07:40'), w('2026-10-24', '10:00', 1), w('2026-10-25', '07:50')];
+  // Einträge von Withings (Abgleich um 9 Uhr) zählen nicht – nur der Trainingsstart
+  const logs = workouts.filter((x) => x.category === 16).map((x) => log('Sport', x.day, 'done', { created_at: `${x.day}T09:00:00`, source: 'withings' }));
+  logs.push(log('Sport', '2026-10-22', 'done', { created_at: '2026-10-22T07:30:00' })); // von Hand
+  // 7:35, 7:45, 7:40, 7:50, 7:30 (Hand) → 7:40
+  assert.deepEqual(usualFor(sport, logs, workouts, MO, localOf), { n: 5, min: 460 });
+  assert.deepEqual(usualTime(logs, 'Sport', MO, localOf).n, 1, 'ohne Trainings nur der Hand-Eintrag');
+  assert.deepEqual(usualDueNow([sport], logs, [], MO, 7 * 60 + 10, localOf, workouts).map((o) => o.name), ['Sport']);
 });

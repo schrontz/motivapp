@@ -6,12 +6,12 @@ import { longDate, greeting, monthName, diffDays, parseDay } from '../dates.js';
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS } from '../icons.js';
 import { todayItems, sortTodayItems, todayRing, windowQuota, totalHits, scheduleText, logOf, isPaused, miniPeriodName, patternHint } from '../stats.js';
 import { travelArrivedCard } from './distance.js';
-import { reduceCard } from './reduce.js';
-import { alcoholCard, alcoholSheet } from './alcohol.js';
-import { foodCard } from './food.js';
-import { findCard } from './finds.js';
+import { alcoholSheet } from './alcohol.js';
+import { findCelebrate } from './finds.js';
+import { homeModules } from './home.js';
+import { usualFor, timeText } from '../remind.js';
 import { weekChanges, changeText, isStrengthHabit } from '../strength.js';
-import { homeOrder } from '../home.js';
+import { groupToday } from '../home.js';
 import { alphaOn, bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
 export function tilesSection(S, T) {
@@ -57,7 +57,7 @@ export function dash(r, f) {
 }
 
 // pause: heute ist nichts fällig, weil Pause ist → Ring „Heute“ voll („Nichts muss“ soll sich auch so anfühlen)
-export function ringsCard(today, week, month, pause = null) {
+export function ringsCard(today, week, month, pause = null, compact = false) {
   const fToday = pause ? 1 : (today.due ? today.done / today.due : 0);
   const fWeek = week.expected ? week.hits / week.expected : 0;
   const fMonth = month.expected ? month.hits / month.expected : 0;
@@ -69,8 +69,8 @@ export function ringsCard(today, week, month, pause = null) {
     <circle class="ring-track" cx="90" cy="90" r="${r}" style="stroke: var(--ring-${n}-track)"></circle>
     <circle class="ring-val" cx="90" cy="90" r="${r}" style="stroke: var(--ring-${n})" stroke-dasharray="${dash(r, f)}"></circle>`;
   const leg = (n, l, v) => `<div class="legend-item"><span class="dot" style="background: var(--ring-${n})"></span><div><div class="label">${l}</div><div class="value">${v}</div></div></div>`;
-  return `<section class="card rings">
-    <svg width="150" height="150" viewBox="0 0 180 180" role="img" aria-label="${esc(label)}">
+  return `<section class="card rings${compact ? ' compact' : ''}">
+    <svg width="${compact ? 86 : 150}" height="${compact ? 86 : 150}" viewBox="0 0 180 180" role="img" aria-label="${esc(label)}">
       <g transform="rotate(-90 90 90)">${ring(78, 1, fToday)}${ring(60, 2, fWeek)}${ring(42, 3, fMonth)}</g>
     </svg>
     <div class="legend">${leg(1, 'Heute', tText)}${leg(2, 'Letzte 7 Tage', wText)}${leg(3, 'Letzte 30 Tage', mText)}</div>
@@ -84,7 +84,7 @@ function pauseToday(items, allPaused) {
   return paused ? { done: items.filter((i) => i.hit).length } : null;
 }
 
-export function habitRow(S, item) {
+export function habitRow(S, item, usual = null) {
   const h = item.habit;
   const col = colorOf(S, h);
   const log = item.log;
@@ -135,7 +135,7 @@ export function habitRow(S, item) {
     <div class="hicon" style="background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon)}</div>
     <a class="row-main" href="#/habit/${esc(h.id)}">
       <div class="row-title"><span>${esc(h.name)}</span>${pills}</div>
-      <div class="row-sub">${esc(sub)}</div>
+      <div class="row-sub">${usual != null && !item.hit ? `meist gegen ${timeText(usual)} · ` : ''}${esc(sub)}</div>
       ${!item.hit && (S.weekChanges || []).length && isStrengthHabit(h) ? `<div class="row-up">↑ Diese Woche steigern: ${esc(S.weekChanges.map(changeText).join(' · '))}</div>` : ''}
       ${progress}
     </a>
@@ -153,8 +153,6 @@ export function overview(S, T) {
   const items = todayItems(shown, S.idx, S.pauses, T);
   // Steigerungspläne: was ist diese Woche höher als letzte? (für die Sport-Gewohnheit)
   S.weekChanges = alphaOn(S) ? weekChanges(S.plans || [], S.strength || [], T) : [];
-  const ids = new Set(shown.map((h) => h.id));
-  const total = totalHits(S.logs.filter((l) => ids.has(l.habit_id) || cat === 'all'));
   const name = S.profile && S.profile.display_name ? `, ${esc(S.profile.display_name)}` : '';
 
   const chips = usedCats.length
@@ -170,32 +168,42 @@ export function overview(S, T) {
     .map(({ h, hint }) => hintCard(h, hint)).join('');
 
   const allPaused = S.pauses.some((p) => p.habit_id == null && p.start_day <= T && T <= p.end_day);
+  // „Jetzt“: was du üblicherweise um diese Zeit machst; Späteres und Erledigtes zugeklappt
+  const now = new Date();
+  const usualCache = new Map();
+  const usualOf = (h) => {
+    if (!usualCache.has(h.id)) usualCache.set(h.id, usualFor(h, S.logs, S.workouts, T).min);
+    return usualCache.get(h.id);
+  };
+  const groups = groupToday(items, usualOf, now.getHours() * 60 + now.getMinutes());
+  const rows = (list) => list.map((e) => habitRow(S, e.item, e.usual)).join('');
+  const folded = (id, title, list) => {
+    if (!list.length) return '';
+    const open = S.openGroups && S.openGroups.has(id);
+    const names = list.map((e) => e.item.habit.name).join(', ');
+    return `<div class="card list today-fold">
+      <button type="button" class="fold-head" data-action="group-toggle" data-id="${id}" aria-expanded="${!!open}">
+        <span><b>${title} · ${list.length}</b>${open ? '' : ` <span class="muted">· ${esc(names)}</span>`}</span><span class="muted">${open ? '˄' : '›'}</span>
+      </button>
+      ${open ? rows(list) : ''}
+    </div>`;
+  };
   let list;
   if (active.length === 0) {
     list = `<div class="empty"><b>Noch keine Gewohnheiten</b><p class="hint" style="margin: 6px 0 16px">Fang mit einer an – klein ist völlig okay.</p><a class="btn" href="#/new">Erste Gewohnheit anlegen</a></div>`;
   } else if (items.length === 0) {
     list = `<div class="empty"><b>Heute ist nichts geplant</b><p class="hint" style="margin-top: 4px">Genieß den freien Tag.</p></div>`;
   } else {
-    list = `<div class="card list">${sortTodayItems(items).map((i) => habitRow(S, i)).join('')}</div>`;
+    const nextUp = groups.later[0];
+    list = `${groups.now.length
+      ? `<div class="card list">${rows(groups.now)}</div>`
+      : `<p class="hint" style="padding: 0 4px">${groups.later.length ? `Gerade nichts – als Nächstes ${esc(nextUp.item.habit.name)} (meist gegen ${timeText(nextUp.usual)}).` : 'Alles geschafft für heute. 🎉'}</p>`}
+      ${folded('later', 'Später heute', groups.later)}
+      ${folded('done', groups.done.some((e) => e.item.paused && !e.item.hit) ? 'Erledigt & Pause' : 'Erledigt', groups.done)}`;
   }
-
-  // Blöcke – Reihenfolge stellt man im Profil ein („Startbildschirm“)
-  const blocks = {
-    rings: () => ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused)),
-    fund: () => findCard(S, T),
-    weniger: () => reduceCard(S, T),
-    alkohol: () => alcoholCard(S, T),
-    essen: () => foodCard(S, T),
-    heute: () => `<div class="section-head"><h2>Heute</h2>${items.length ? '<span class="small muted">Tippen zum Abhaken</span>' : ''}</div>
-      ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
-      ${list}
-      ${hints}`,
-    gesamt: () => `<section class="total">
-        <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
-        <div><div class="big">${fmt(total)} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
-      </section>`,
-    werte: () => tilesSection(S, T)
-  };
+  const mods = homeModules(S, T);
+  const hour = now.getHours();
+  const nowTitle = hour < 11 ? 'was du meist morgens machst' : hour < 17 ? 'was du meist tagsüber machst' : 'was du meist abends machst';
 
   return `<div class="app">
     <header class="top">
@@ -205,7 +213,15 @@ export function overview(S, T) {
     ${chips}
     <div class="wrap">
       ${travelArrivedCard(S)}
-      ${homeOrder(S.profile && S.profile.home_order).map((id) => blocks[id]()).join('')}
+      ${findCelebrate(S)}
+      ${ringsCard(todayRing(items), windowQuota(shown, S.idx, S.pauses, T, 7), windowQuota(shown, S.idx, S.pauses, T, 30), pauseToday(items, allPaused), true)}
+      ${mods.tiles}
+      <div class="section-head"><h2>Jetzt</h2>${items.length ? `<span class="small muted">${nowTitle}</span>` : ''}</div>
+      ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
+      ${list}
+      ${hints}
+      ${mods.lines}
+      ${tilesSection(S, T)}
     </div>
     ${nav('overview')}
     ${alcoholSheet(S)}

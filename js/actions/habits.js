@@ -198,6 +198,8 @@ function nextColor() {
 // ───────────── Ereignisse ─────────────
 
 export const clicks = {
+  // Übersicht: „Später heute“ / „Erledigt“ auf- und zuklappen
+  'group-toggle': ({ id }) => { if (S.openGroups.has(id)) S.openGroups.delete(id); else S.openGroups.add(id); render(); },
   cat: ({ id }) => { S.cat = id; local.set('cat', id); render(); },
   toggle: ({ id, T }) => cycleCheck(id, T),
   'open-sheet': ({ id, T }) => openSheet(id, T),

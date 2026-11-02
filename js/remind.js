@@ -8,9 +8,10 @@
 // - Woche/Monat: erst dabei, wenn es knapp wird (noch genau so viele freie Tage wie fehlende Male)
 // - Mini zählt als geschafft
 
-import { todayItems, indexLogs, isPaused, isPeriodic } from './stats.js';
+import { todayItems, indexLogs, isPaused, isPeriodic, isHit, logOf } from './stats.js';
 import { eachDay, weekStart, addDays, monthStart, daysInMonth } from './dates.js';
 import { weekChanges, changeText, isStrengthHabit } from './strength.js';
+import { workoutCounts } from './auto.js';
 
 export { weekChanges }; // auch für die Edge Function (eingebettete Kopie)
 
@@ -23,6 +24,9 @@ export const USUAL_DAYS = 14;
 export const isAuto = (h) => !!h.auto_metric;
 export const remindable = (h) => !h.archived && !isAuto(h) && h.remind !== false;
 export const hasMini = (h) => !!(h.mini_text || h.mini_value != null);
+// Eigene Erinnerung 30 Minuten vor „meist gegen …“ (pro Gewohnheit, Mockup „meist gegen“)
+export const USUAL_LEAD = 30;
+export const remindsUsual = (h) => remindable(h) && h.remind_mode === 'usual';
 
 export function allPaused(pauses, day) {
   return pauses.some((p) => p.habit_id == null && p.start_day <= day && day <= p.end_day);
@@ -41,15 +45,59 @@ export function openForReminder(habits, logs, pauses, day) {
   for (const it of todayItems(habits.filter(remindable), idx, pauses, day)) {
     const h = it.habit;
     if (it.paused || it.hit) continue;
+    if (h.remind_mode === 'usual' && h.remind_last === day) continue; // kam heute schon zur üblichen Zeit
     if (!isPeriodic(h)) { out.push({ habit: h, name: h.name }); continue; }
-    const need = it.period.min - it.period.n;
-    if (need <= 0) continue;
-    let free = 0;
-    for (const d of eachDay(day, periodEnd(h, day))) if (!isPaused(h, d, pauses)) free += 1;
-    if (free > need) continue; // noch genug Zeit – kein Druck
-    out.push({ habit: h, name: h.name, need, word: h.schedule === 'per_week' ? 'diese Woche' : 'diesen Monat' });
+    const p = periodOpen(h, it, pauses, day);
+    if (p && p.tight) out.push({ habit: h, name: h.name, need: p.need, word: p.word });
   }
   return out;
+}
+
+// Woche/Monat: wie viel fehlt noch, und wird es knapp (noch genau so viele freie Tage wie fehlende Male)?
+function periodOpen(h, it, pauses, day) {
+  const need = it.period.min - it.period.n;
+  if (need <= 0) return null;
+  let free = 0;
+  for (const d of eachDay(day, periodEnd(h, day))) if (!isPaused(h, d, pauses)) free += 1;
+  return { need, tight: free <= need, word: h.schedule === 'per_week' ? 'diese Woche' : 'diesen Monat' };
+}
+
+// Ist das „sein“ Wochentag? An mindestens 2 der letzten 4 gleichen Wochentage geschafft.
+export function usualWeekday(idx, habitId, day) {
+  let n = 0;
+  for (let k = 1; k <= 4; k += 1) if (isHit(logOf(idx, habitId, addDays(day, -7 * k)))) n += 1;
+  return n >= 2;
+}
+
+// Eigene Erinnerungen, die jetzt dran sind → [{ habit, name, at, usual, need?, word? }]
+// Fenster: ab 30 Min. vor „meist gegen“ bis 90 Min. danach (falls der Zeitplan hängt); einmal am Tag (remind_last).
+// Woche/Monat: nur an Tagen, an denen man es meist macht – oder wenn es knapp wird.
+export function usualDueNow(habits, logs, pauses, day, nowMin, localOf = browserLocal, workouts = []) {
+  if (allPaused(pauses, day)) return [];
+  const idx = indexLogs(logs);
+  const out = [];
+  for (const it of todayItems(habits.filter(remindsUsual), idx, pauses, day)) {
+    const h = it.habit;
+    if (h.remind_last === day || it.paused || it.hit) continue;
+    const u = usualFor(h, logs, workouts, day, localOf);
+    if (u.min == null) continue; // lernt noch – bis dahin in der Abend-Nachricht
+    const at = Math.max(0, u.min - USUAL_LEAD);
+    if (nowMin < at || nowMin >= at + 90) continue;
+    if (!isPeriodic(h)) { out.push({ habit: h, name: h.name, at, usual: u.min }); continue; }
+    const p = periodOpen(h, it, pauses, day);
+    if (!p || !(p.tight || usualWeekday(idx, h.id, day))) continue;
+    out.push({ habit: h, name: h.name, at, usual: u.min, need: p.need, word: p.word });
+  }
+  return out;
+}
+
+// Text der eigenen Erinnerung: Titel = Name der Gewohnheit
+export function usualText(o, changes = []) {
+  let body = o.need ? `Meist um diese Zeit – noch ${o.need}× ${o.word}.` : `Meist machst du das gegen ${timeText(o.usual)}.`;
+  const note = trainingNote([o], changes);
+  if (note) body += ` ${note}.`;
+  if (hasMini(o.habit)) body += ' Mini zählt auch 🙂';
+  return { title: o.name, body };
 }
 
 const listNames = (names) => {
@@ -122,6 +170,22 @@ export function usualTime(logs, habitId, today, localOf = browserLocal) {
   const mid = Math.floor(mins.length / 2);
   const median = mins.length % 2 ? mins[mid] : (mins[mid - 1] + mins[mid]) / 2;
   return { n: mins.length, min: Math.round(median / 10) * 10 };
+}
+
+// Training mit Auto-Abhaken: der Eintrag entsteht erst beim Abgleich mit der Uhr – darum zählt hier
+// die Startzeit des Trainings (das erste passende am Tag). Von Hand Abgehaktes an anderen Tagen zählt mit.
+export const isTrainingAuto = (h) => !h.auto_metric && Array.isArray(h.auto_categories) && h.auto_categories.length > 0;
+export function usualFor(h, logs, workouts = [], today, localOf = browserLocal) {
+  if (!isTrainingAuto(h) || !workouts || !workouts.length) return usualTime(logs, h.id, today, localOf);
+  const first = new Map();
+  for (const w of workouts) {
+    if (!w.start_at || !workoutCounts(h, w)) continue;
+    const f = first.get(w.day);
+    if (!f || w.start_at < f.start_at) first.set(w.day, w);
+  }
+  const samples = [...first.values()].map((w) => ({ habit_id: h.id, day: w.day, status: 'done', created_at: w.start_at }));
+  const manual = logs.filter((l) => l.habit_id === h.id && !l.source && !first.has(l.day));
+  return usualTime([...samples, ...manual], h.id, today, localOf);
 }
 
 function browserLocal(iso) {

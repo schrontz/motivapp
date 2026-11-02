@@ -63,7 +63,7 @@ function ringSvg(size, stroke, share, label, inner = '') {
 }
 
 // Text für den Timer (Karte und Bereich)
-function timerText(st) {
+export function timerText(st) {
   const { tm, iv, settings } = st;
   if (tm.night) return { big: 'Nachtruhe', small: `Der Abstand ruht bis ${settings.night_to} Uhr`, share: 1 };
   if (!iv) return { big: tm.last ? agoTxt(tm.since).replace('vor ', '') : 'noch keine', small: tm.last ? `seit der letzten (${timeTxt(tm.last.at)})` : 'heute', share: 0 };

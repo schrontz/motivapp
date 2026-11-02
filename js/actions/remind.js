@@ -153,6 +153,20 @@ export const clicks = {
   }
 };
 
+// Eigene Erinnerung zur üblichen Zeit an/aus („Passt so“ = bleibt in der Abend-Nachricht)
+clicks['remind-mode'] = async ({ el }) => {
+  const h = S.habits.find((x) => x.id === el.dataset.id);
+  if (!h) return;
+  const mode = el.dataset.mode === 'usual' ? 'usual' : 'daily';
+  h.remind_mode = mode;
+  if (mode === 'usual') h.remind = true;
+  render();
+  await persist(async () => {
+    await db.setHabitRemindMode(h.id, mode);
+    if (mode === 'usual') await db.setHabitRemind(h.id, true);
+  });
+};
+
 export const changes = {
   'remind-time': async ({ el }) => {
     const min = parseTime(el.value);

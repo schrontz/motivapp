@@ -135,26 +135,56 @@ function minusDays(day: string, n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-async function openText(db: any, userId: string, day: string) {
+async function loadDay(db: any, userId: string, day: string) {
   const from = minusDays(day, 31);
   const [habits, logs, pauses] = await Promise.all([
     db.from('habits').select('*').eq('user_id', userId).eq('archived', false).order('sort_order'),
-    db.from('habit_logs').select('habit_id, day, status').eq('user_id', userId).gte('day', from).lte('day', day),
+    db.from('habit_logs').select('habit_id, day, status, created_at, source').eq('user_id', userId).gte('day', from).lte('day', day),
     db.from('pauses').select('habit_id, start_day, end_day').eq('user_id', userId).gte('end_day', from)
   ]);
   for (const r of [habits, logs, pauses]) if (r.error) throw r.error;
-  const open = openForReminder(habits.data, logs.data, pauses.data, day);
-  // Steigerungspläne (Alpha Progression): „↑ Diese Woche höher: …“ – fehlt das Modul, einfach ohne
-  let changes: any[] = [];
+  return { habits: habits.data || [], logs: logs.data || [], pauses: pauses.data || [] };
+}
+
+// Steigerungspläne (Alpha Progression): „↑ Diese Woche höher: …“ – fehlt das Modul, einfach ohne
+async function planChanges(db: any, userId: string, day: string) {
   try {
     const plans = await db.from('exercise_plans').select('*').eq('user_id', userId);
-    if (!plans.error && (plans.data || []).length && open.length) {
-      const since = minusDays((plans.data as any[]).map((p) => p.started_on).sort()[0] || day, 7);
-      const sessions = await db.from('strength_sessions').select('day, started_at, exercises').eq('user_id', userId).gte('day', since);
-      if (!sessions.error) changes = weekChanges(plans.data, sessions.data || [], day);
-    }
-  } catch (e) { console.warn('Steigerung nicht verfügbar', e); }
-  return reminderText(open, changes);
+    if (plans.error || !(plans.data || []).length) return [];
+    const since = minusDays((plans.data as any[]).map((p) => p.started_on).sort()[0] || day, 7);
+    const sessions = await db.from('strength_sessions').select('day, started_at, exercises').eq('user_id', userId).gte('day', since);
+    return sessions.error ? [] : weekChanges(plans.data, sessions.data || [], day);
+  } catch (e) {
+    console.warn('Steigerung nicht verfügbar', e);
+    return [];
+  }
+}
+
+async function openText(db: any, userId: string, day: string) {
+  const d = await loadDay(db, userId, day);
+  const open = openForReminder(d.habits, d.logs, d.pauses, day);
+  return reminderText(open, open.length ? await planChanges(db, userId, day) : []);
+}
+
+// Eigene Erinnerungen 30 Minuten vor „meist gegen …“ – je Gewohnheit einmal am Tag
+async function usualRound(db: any, userId: string, tz: string, local: { day: string; min: number }, keys: any, fetcher: typeof fetch) {
+  const d = await loadDay(db, userId, local.day);
+  // Training mit Auto-Abhaken: Startzeiten der Trainings (fehlt Withings, eben ohne)
+  const w = await db.from('workouts').select('day, start_at, category, duration_min').eq('user_id', userId).gte('day', minusDays(local.day, 15));
+  const workouts = w.error ? [] : w.data || [];
+  const due = usualDueNow(d.habits, d.logs, d.pauses, local.day, local.min, (iso: string) => zonedNow(new Date(iso), tz), workouts);
+  let sent = 0;
+  for (const o of due) {
+    let claim = db.from('habits').update({ remind_last: local.day }).eq('id', o.habit.id);
+    claim = o.habit.remind_last ? claim.eq('remind_last', o.habit.remind_last) : claim.is('remind_last', null);
+    const { data: claimed, error } = await claim.select('id');
+    if (error) throw error;
+    if (!claimed || !claimed.length) continue;
+    const text = usualText(o, await planChanges(db, userId, local.day));
+    await deliver(db, userId, { ...text, url: APP_URL, tag: `erinnerung-${o.habit.id}` }, keys, fetcher);
+    sent += 1;
+  }
+  return sent;
 }
 
 async function deliver(db: any, userId: string, message: unknown, keys: any, fetcher: typeof fetch) {
@@ -177,9 +207,17 @@ async function deliver(db: any, userId: string, message: unknown, keys: any, fet
 export async function runRound(db: any, keys: any, now: Date, fetcher: typeof fetch) {
   const { data: people, error } = await db.from('profiles').select('id, remind_at, remind_tz, remind_last').eq('remind_on', true);
   if (error) throw error;
-  const report = { checked: (people || []).length, sent: 0, quiet: 0 };
+  const report = { checked: (people || []).length, sent: 0, quiet: 0, usual: 0 };
+  // Wer hat Gewohnheiten mit eigener Erinnerung? (fehlt die Spalte noch – 022 nicht ausgeführt –, eben keine)
+  const usual = await db.from('habits').select('user_id, remind_last').eq('remind_mode', 'usual').eq('archived', false);
+  if (usual.error) console.warn('Eigene Erinnerungen nicht verfügbar', usual.error.message);
+  const usualRows: any[] = usual.error ? [] : usual.data || [];
   for (const p of people || []) {
-    const local = zonedNow(now, p.remind_tz || 'Europe/Berlin');
+    const tz = p.remind_tz || 'Europe/Berlin';
+    const local = zonedNow(now, tz);
+    if (usualRows.some((r) => r.user_id === p.id && r.remind_last !== local.day)) {
+      report.usual += await usualRound(db, p.id, tz, local, keys, fetcher);
+    }
     if (!isDue(p.remind_at, local.min, p.remind_last, local.day)) continue;
     // Tag zuerst „belegen“ – überlappende Läufe schicken so nichts doppelt
     let claim = db.from('profiles').update({ remind_last: local.day }).eq('id', p.id);
@@ -408,6 +446,14 @@ var CATEGORY_GROUPS = [
   { id: "other", label: "Sonstiges", cats: [-1] }
 ];
 var GROUPED = new Set(CATEGORY_GROUPS.flatMap((g) => g.cats).filter((c) => c > 0));
+function matchesCategories(cat, list) {
+  if (!list || list.length === 0) return false;
+  if (list.includes(cat)) return true;
+  return list.includes(-1) && !GROUPED.has(cat);
+}
+function workoutCounts(habit, w) {
+  return matchesCategories(w.category, habit.auto_categories) && Number(w.duration_min) >= (habit.auto_min_minutes || 0);
+}
 
 function exerciseKey(e) {
   return `${e.name}|${e.equipment || ""}`;
@@ -572,6 +618,8 @@ var USUAL_DAYS = 14;
 var isAuto = (h) => !!h.auto_metric;
 var remindable = (h) => !h.archived && !isAuto(h) && h.remind !== false;
 var hasMini = (h) => !!(h.mini_text || h.mini_value != null);
+var USUAL_LEAD = 30;
+var remindsUsual = (h) => remindable(h) && h.remind_mode === "usual";
 function allPaused(pauses, day) {
   return pauses.some((p) => p.habit_id == null && p.start_day <= day && day <= p.end_day);
 }
@@ -586,18 +634,55 @@ function openForReminder(habits, logs, pauses, day) {
   for (const it of todayItems(habits.filter(remindable), idx, pauses, day)) {
     const h = it.habit;
     if (it.paused || it.hit) continue;
+    if (h.remind_mode === "usual" && h.remind_last === day) continue;
     if (!isPeriodic(h)) {
       out.push({ habit: h, name: h.name });
       continue;
     }
-    const need = it.period.min - it.period.n;
-    if (need <= 0) continue;
-    let free = 0;
-    for (const d of eachDay(day, periodEnd(h, day))) if (!isPaused(h, d, pauses)) free += 1;
-    if (free > need) continue;
-    out.push({ habit: h, name: h.name, need, word: h.schedule === "per_week" ? "diese Woche" : "diesen Monat" });
+    const p = periodOpen(h, it, pauses, day);
+    if (p && p.tight) out.push({ habit: h, name: h.name, need: p.need, word: p.word });
   }
   return out;
+}
+function periodOpen(h, it, pauses, day) {
+  const need = it.period.min - it.period.n;
+  if (need <= 0) return null;
+  let free = 0;
+  for (const d of eachDay(day, periodEnd(h, day))) if (!isPaused(h, d, pauses)) free += 1;
+  return { need, tight: free <= need, word: h.schedule === "per_week" ? "diese Woche" : "diesen Monat" };
+}
+function usualWeekday(idx, habitId, day) {
+  let n = 0;
+  for (let k = 1; k <= 4; k += 1) if (isHit(logOf(idx, habitId, addDays(day, -7 * k)))) n += 1;
+  return n >= 2;
+}
+function usualDueNow(habits, logs, pauses, day, nowMin, localOf = browserLocal, workouts = []) {
+  if (allPaused(pauses, day)) return [];
+  const idx = indexLogs(logs);
+  const out = [];
+  for (const it of todayItems(habits.filter(remindsUsual), idx, pauses, day)) {
+    const h = it.habit;
+    if (h.remind_last === day || it.paused || it.hit) continue;
+    const u = usualFor(h, logs, workouts, day, localOf);
+    if (u.min == null) continue;
+    const at = Math.max(0, u.min - USUAL_LEAD);
+    if (nowMin < at || nowMin >= at + 90) continue;
+    if (!isPeriodic(h)) {
+      out.push({ habit: h, name: h.name, at, usual: u.min });
+      continue;
+    }
+    const p = periodOpen(h, it, pauses, day);
+    if (!p || !(p.tight || usualWeekday(idx, h.id, day))) continue;
+    out.push({ habit: h, name: h.name, at, usual: u.min, need: p.need, word: p.word });
+  }
+  return out;
+}
+function usualText(o, changes = []) {
+  let body = o.need ? `Meist um diese Zeit \u2013 noch ${o.need}\xD7 ${o.word}.` : `Meist machst du das gegen ${timeText(o.usual)}.`;
+  const note = trainingNote([o], changes);
+  if (note) body += ` ${note}.`;
+  if (hasMini(o.habit)) body += " Mini z\xE4hlt auch \u{1F642}";
+  return { title: o.name, body };
 }
 var listNames = (names) => {
   if (names.length <= 4) return names.join(", ");
@@ -655,6 +740,19 @@ function usualTime(logs, habitId, today, localOf = browserLocal) {
   const mid = Math.floor(mins.length / 2);
   const median = mins.length % 2 ? mins[mid] : (mins[mid - 1] + mins[mid]) / 2;
   return { n: mins.length, min: Math.round(median / 10) * 10 };
+}
+var isTrainingAuto = (h) => !h.auto_metric && Array.isArray(h.auto_categories) && h.auto_categories.length > 0;
+function usualFor(h, logs, workouts = [], today, localOf = browserLocal) {
+  if (!isTrainingAuto(h) || !workouts || !workouts.length) return usualTime(logs, h.id, today, localOf);
+  const first = /* @__PURE__ */ new Map();
+  for (const w of workouts) {
+    if (!w.start_at || !workoutCounts(h, w)) continue;
+    const f = first.get(w.day);
+    if (!f || w.start_at < f.start_at) first.set(w.day, w);
+  }
+  const samples = [...first.values()].map((w) => ({ habit_id: h.id, day: w.day, status: "done", created_at: w.start_at }));
+  const manual = logs.filter((l) => l.habit_id === h.id && !l.source && !first.has(l.day));
+  return usualTime([...samples, ...manual], h.id, today, localOf);
 }
 function browserLocal(iso) {
   const d = new Date(iso);

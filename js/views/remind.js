@@ -2,10 +2,48 @@
 
 import { svg, UI_ICONS } from '../icons.js';
 import { esc } from './ui.js';
-import { openForReminder, reminderText, timeText, usualTime, isAuto, MIN_USUAL, DEFAULT_TIME, weekChanges } from '../remind.js';
+import { openForReminder, reminderText, timeText, usualFor, isAuto, remindable, MIN_USUAL, DEFAULT_TIME, USUAL_LEAD, weekChanges } from '../remind.js';
 import { isPeriodic } from '../stats.js';
 
 export const hasRemindSchema = (S) => !!(S.profile && 'remind_on' in S.profile);
+// Eigene Erinnerung pro Gewohnheit kommt mit 022 (zusammen mit den Startbildschirm-Kacheln)
+export const hasUsualSchema = (S) => !!(S.profile && 'home_tiles' in S.profile);
+
+const dayPart = (min) => (min < 11 * 60 ? 'morgens' : min < 14 * 60 ? 'mittags' : min < 17 * 60 + 30 ? 'nachmittags' : 'abends');
+
+// Zeile unter einer Gewohnheit auf der Erinnerungs-Seite: eigene Erinnerung zur üblichen Zeit
+function ownRow(S, h, T) {
+  if (!hasUsualSchema(S) || !remindable(h)) return '';
+  const u = usualFor(h, S.logs, S.workouts, T);
+  const on = h.remind_mode === 'usual';
+  const sub = u.min != null
+    ? (on ? `kommt um ${timeText(u.min - USUAL_LEAD)} statt am Abend` : `um ${timeText(u.min - USUAL_LEAD)} – meist gegen ${timeText(u.min)}`)
+    : `sobald die Zeit gelernt ist (${u.n} von ${MIN_USUAL})${on ? ' – bis dahin am Abend' : ''}`;
+  return `<div class="switch-row remind-own">
+    <span><span style="display: block; font-size: 15px">Eigene Erinnerung</span><span class="small muted">${sub}</span></span>
+    <button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(h.name)}: eigene Erinnerung zur üblichen Zeit" data-action="remind-mode" data-id="${esc(h.id)}" data-mode="${on ? 'daily' : 'usual'}"></button>
+  </div>`;
+}
+
+// Angebot bei der Gewohnheit (Mockup „meist gegen“): nur wenn die übliche Zeit deutlich vor der Abend-Erinnerung liegt
+export function usualOffer(S, h, T) {
+  if (!hasUsualSchema(S) || !S.profile.remind_on || !remindable(h)) return '';
+  const u = usualFor(h, S.logs, S.workouts, T);
+  if (u.min == null) return '';
+  const at = timeText(u.min - USUAL_LEAD);
+  if (h.remind_mode === 'usual') {
+    return `<div class="small muted usual" style="padding: 0 4px">${svg('M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0', 15)}Eigene Erinnerung um ${at} · <a href="#/erinnerung" class="link-inline">ändern</a></div>`;
+  }
+  const evening = S.profile.remind_at == null ? DEFAULT_TIME : S.profile.remind_at;
+  if (h.remind_mode === 'daily' || u.min > evening - 120) return '';
+  return `<section class="offer">
+    <div style="font-size: 15px; line-height: 1.4">${esc(h.name)} machst du meist <b>${dayPart(u.min)}</b> – die Abend-Erinnerung kommt da spät. Eigene Erinnerung um <b>${at}</b>?</div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+      <button type="button" class="btn small" data-action="remind-mode" data-id="${esc(h.id)}" data-mode="usual">Ja, um ${at}</button>
+      <button type="button" class="link-btn" data-action="remind-mode" data-id="${esc(h.id)}" data-mode="daily">Passt so</button>
+    </div>
+  </section>`;
+}
 
 const CLOCK = 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2';
 
@@ -55,7 +93,7 @@ export function remindView(S, T) {
       <span><span style="display: block; font-size: 16px; font-weight: 600">${esc(h.name)}</span>
         <span class="small muted">${auto ? 'kommt von der Uhr' : sched}</span></span>
       <input type="checkbox" class="reduce-check" data-action="remind-habit" data-id="${esc(h.id)}"${!auto && h.remind !== false ? ' checked' : ''}${auto ? ' disabled' : ''} aria-label="${esc(h.name)} in die Erinnerung">
-    </label>`;
+    </label>${ownRow(S, h, T)}`;
   }).join('');
   const text = reminderText(openForReminder(S.habits, S.logs, S.pauses, T), S.plans ? weekChanges(S.plans, S.strength || [], T) : []);
   const preview = text
@@ -106,7 +144,7 @@ export function remindProfileCard(S) {
 // Zeile unter dem Namen einer Gewohnheit: „meist gegen 7:40“
 export function usualLine(S, h, T) {
   if (isAuto(h)) return '';
-  const u = usualTime(S.logs, h.id, T);
+  const u = usualFor(h, S.logs, S.workouts, T);
   if (u.min != null) return `<div class="small muted usual">${svg(CLOCK, 15)}meist gegen ${timeText(u.min)}</div>`;
   if (u.n > 0) return `<div class="small usual faint">${svg(CLOCK, 15)}Zeit lernt sich noch – ${u.n} von ${MIN_USUAL} Einträgen</div>`;
   return '';

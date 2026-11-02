@@ -15,3 +15,4 @@ export * from './views/alcohol.js';
 export * from './views/food.js';
 export * from './views/remind.js';
 export * from './views/finds.js';
+export * from './views/home.js';

@@ -5,10 +5,9 @@ import { reduceProfileCard } from './reduce.js';
 import { alcoholProfileCard } from './alcohol.js';
 import { foodProfileCard } from './food.js';
 import { remindProfileCard } from './remind.js';
-import { reduceOn } from './reduce.js';
-import { alcoholOn } from './alcohol.js';
-import { foodOn } from './food.js';
-import { HOME_BLOCKS, homeOrder } from '../home.js';
+import { HOME_BLOCKS, homeOrder, homeTiles } from '../home.js';
+import { homeVisible } from './home.js';
+import { today } from '../dates.js';
 import { svg, UI_ICONS, COLORS } from '../icons.js';
 import { ago, alphaOn, bodyOn, esc, nav, shortDate } from './ui.js';
 
@@ -110,37 +109,32 @@ export function installCard(S) {
     </section>`;
 }
 
-// Welche Blöcke gerade auf dem Startbildschirm stehen können
-export function homeVisible(S) {
-  const v = new Set(['rings', 'heute', 'gesamt', 'werte']);
-  if (S.hasFindSchema) v.add('fund');
-  if (reduceOn(S)) v.add('weniger');
-  if (alcoholOn(S)) v.add('alkohol');
-  if (foodOn(S)) v.add('essen');
-  return v;
-}
-
 export function homeCard(S) {
   if (!S.profile) return '';
   if (!('home_order' in S.profile)) {
-    return `<section class="card pad"><b>Startbildschirm anordnen</b><p class="hint" style="margin-top: 4px">Bitte zuerst das Datenbank-Update <code>020_startbildschirm.sql</code> im Supabase SQL-Editor ausführen.</p></section>`;
+    return `<section class="card pad"><b>Startbildschirm</b><p class="hint" style="margin-top: 4px">Bitte zuerst die Datenbank-Updates <code>020_startbildschirm.sql</code> und <code>022_startbildschirm_kacheln.sql</code> im Supabase SQL-Editor ausführen.</p></section>`;
   }
-  const visible = homeVisible(S);
+  const T = today();
+  const visible = homeVisible(S, T);
   const list = homeOrder(S.profile.home_order).filter((id) => visible.has(id));
+  const canTiles = 'home_tiles' in S.profile;
+  const tiles = homeTiles(S.profile.home_order, visible, canTiles ? S.profile.home_tiles : null);
   const label = Object.fromEntries(HOME_BLOCKS.map((b) => [b.id, b]));
   const move = (id, i, dir) => {
     const off = dir < 0 ? i === 0 : i === list.length - 1;
     return `<button type="button" class="queue-move" data-action="home-move" data-id="${id}" data-dir="${dir}"${off ? ' disabled' : ''} aria-label="${esc(label[id].label)} ${dir < 0 ? 'nach oben' : 'nach unten'}">${svg(dir < 0 ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6', 18, 2.2)}</button>`;
   };
+  const changed = S.profile.home_order || (canTiles && S.profile.home_tiles);
   return `<section style="display: flex; flex-direction: column; gap: 10px">
-    <div class="section-head" style="margin: 0"><h2 class="h3">Startbildschirm</h2>${S.profile.home_order ? '<button type="button" class="link-btn" data-action="home-reset">Zurücksetzen</button>' : ''}</div>
+    <div class="section-head" style="margin: 0"><h2 class="h3">Startbildschirm</h2>${changed ? '<button type="button" class="link-btn" data-action="home-reset">Zurücksetzen</button>' : ''}</div>
     <div class="card list">
-      ${list.map((id, i) => `<div class="cat-row" style="justify-content: space-between">
-        <div style="min-width: 0"><div style="font-size: 16px; font-weight: 600">${esc(label[id].label)}</div><div class="small muted">${esc(label[id].sub)}</div></div>
+      ${list.length ? list.map((id, i) => `<div class="cat-row" style="justify-content: space-between">
+        <div style="min-width: 0; flex: 1"><div style="font-size: 16px; font-weight: 600">${esc(label[id].label)}</div><div class="small muted">${tiles.includes(id) ? 'oben als Kachel' : 'als Zeile weiter unten'}</div></div>
         <span class="queue-moves">${move(id, i, -1)}${move(id, i, 1)}</span>
-      </div>`).join('')}
+        ${canTiles ? `<button type="button" class="switch" role="switch" aria-checked="${tiles.includes(id)}" aria-label="${esc(label[id].label)} oben als Kachel" data-action="home-tile" data-id="${id}"></button>` : ''}
+      </div>`).join('') : '<p class="hint" style="padding: 12px 16px">Gerade ist kein Modul eingeschaltet.</p>'}
     </div>
-    <p class="hint" style="padding: 0 4px">Von oben nach unten, wie auf der Übersicht. Ein- und ausblenden geht bei den Modulen.</p>
+    <p class="hint" style="padding: 0 4px">Fest oben: Begrüßung und Ring. Darunter bis zu drei Kacheln, dann „Jetzt“. ${canTiles ? '' : 'Für die Kachel-Schalter bitte <code>022_startbildschirm_kacheln.sql</code> ausführen. '}Alkoholfrei erscheint nur, wenn dort „Auf der Übersicht zeigen“ an ist.</p>
   </section>`;
 }
 

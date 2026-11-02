@@ -3,10 +3,10 @@
 import { categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts } from '../auto.js';
 import { monthName, monthShort, WEEKDAYS_SHORT, parseDay } from '../dates.js';
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS } from '../icons.js';
-import { habitStats, scheduleText } from '../stats.js';
+import { habitStats, scheduleText, totalHits } from '../stats.js';
 import { hintCard, sheet } from './overview.js';
 import { colorOf, esc, fmt, nav, notFound, timeOf } from './ui.js';
-import { usualLine } from './remind.js';
+import { usualLine, usualOffer } from './remind.js';
 
 export function detail(S, T, id) {
   const h = S.habits.find((x) => x.id === id);
@@ -35,6 +35,7 @@ export function detail(S, T, id) {
         <div class="hicon" style="width: 52px; height: 52px; border-radius: 16px; background: var(--k-${col}); color: var(--c-${col})">${habitIcon(h.icon, 26)}</div>
         <div><h1 style="font-size: 28px">${esc(h.name)}</h1><div class="small muted">${esc(scheduleText(h))}${cat ? ' · ' + esc(cat.name) : ''}${h.mini_text ? ' · Mini: ' + esc(h.mini_text) : ''}</div>${usualLine(S, h, T)}</div>
       </div>
+      ${usualOffer(S, h, T)}
       <section class="stat-grid">
         <div class="card stat-hero">
           <div><div class="small" style="font-weight: 600">Insgesamt</div><div class="num">${fmt(st.total)} Mal</div><div class="small">geschafft · kann nur wachsen</div></div>
@@ -145,7 +146,10 @@ export function habitsList(S, T) {
       }).join('')}</div>`).join('');
   return `<div class="app">
     <header class="top"><div><h1>Gewohnheiten</h1></div><a class="icon-btn" href="#/new" aria-label="Neue Gewohnheit anlegen">${svg(UI_ICONS.plus)}</a></header>
-    <div class="wrap" style="margin-top: 8px">${body}${active.length ? pauseCard(S, T, null) : ''}</div>
+    <div class="wrap" style="margin-top: 8px">${active.length ? `<section class="total">
+        <div class="ico">${svg(UI_ICONS.trend, 22)}</div>
+        <div><div class="big">${fmt(totalHits(S.logs))} Mal drangeblieben</div><div class="small muted">seit Start · diese Zahl kann nur wachsen</div></div>
+      </section>` : ''}${body}${active.length ? pauseCard(S, T, null) : ''}</div>
     ${nav('habits')}
     ${S.pauseSheet ? pauseSheet(S, T) : ''}
   </div>`;

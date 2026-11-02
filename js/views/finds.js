@@ -36,7 +36,21 @@ const confetti = `<svg class="confetti" viewBox="0 0 350 210" preserveAspectRati
   <rect x="12" y="110" width="8" height="3.5" rx="1.5" fill="#9FE3D2" transform="rotate(50 16 112)"></rect>
 </svg>`;
 
-// Übersicht: Feier (gerade gefunden), Fundstück des Tages, das nächste mit Buchstaben
+// Übersicht: nur die Feier, wenn gerade gefunden (der Rest steht als Kachel/Zeile im Startbildschirm)
+export function findCelebrate(S) {
+  if (!S.hasFindSchema || !S.findCelebrate) return '';
+  const last = latestFound(S);
+  if (!last || last.id !== S.findCelebrate) return '';
+  return `<section class="celebrate celebrate-small find-cel">
+      ${confetti}
+      <button type="button" class="celebrate-x" data-action="find-celebrate-ok" aria-label="Feier schließen">${svg('M6 6l12 12M18 6L6 18', 16)}</button>
+      <div style="font-size: 14px; font-weight: 600; opacity: 0.9">Fundstück gefunden 🎉</div>
+      <div class="celebrate-city">${esc(last.title)}</div>
+      <p>Alle Buchstaben frei – es gehört dir. <a class="find-cel-link" href="#/fund/${esc(last.id)}">Antippen zum Lesen ›</a></p>
+    </section>`;
+}
+
+// (früher) Karte auf der Übersicht: Feier, Fundstück des Tages, das nächste mit Buchstaben
 export function findCard(S, T) {
   if (!S.hasFindSchema) return '';
   const open = openFind(S);

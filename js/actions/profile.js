@@ -4,7 +4,7 @@ import * as db from '../db.js';
 import { S, render, toast, persist } from '../core.js';
 import { today } from '../dates.js';
 import { alphaOn, bodyOn, reduceOn, alcoholOn, foodOn, homeVisible } from '../views.js';
-import { moveBlock } from '../home.js';
+import { moveBlock, toggleTile, MAX_TILES } from '../home.js';
 
 const TILE_ORDER = ['steps', 'training', 'body', 'active', 'distance'];
 
@@ -97,15 +97,26 @@ export const clicks = {
   // Startbildschirm: Block hoch/runter
   'home-move': ({ el, id }) => {
     if (!S.profile) return null;
-    S.profile.home_order = moveBlock(S.profile.home_order, homeVisible(S), id, Number(el.dataset.dir));
+    S.profile.home_order = moveBlock(S.profile.home_order, homeVisible(S, today()), id, Number(el.dataset.dir));
     render();
     return persist(() => db.updateProfile(S.profile.id, { home_order: S.profile.home_order }));
   },
   'home-reset': () => {
     if (!S.profile) return null;
-    S.profile.home_order = null;
+    const patch = { home_order: null };
+    if ('home_tiles' in S.profile) patch.home_tiles = null;
+    Object.assign(S.profile, patch);
     render();
-    return persist(() => db.updateProfile(S.profile.id, { home_order: null }));
+    return persist(() => db.updateProfile(S.profile.id, patch));
+  },
+  // Oben als Kachel an/aus (höchstens drei)
+  'home-tile': ({ id }) => {
+    if (!S.profile || !('home_tiles' in S.profile)) return null;
+    const next = toggleTile(S.profile.home_order, homeVisible(S, today()), S.profile.home_tiles, id);
+    if (!next) { toast(`Höchstens ${MAX_TILES} Kacheln – erst eine andere ausschalten.`); return null; }
+    S.profile.home_tiles = next;
+    render();
+    return persist(() => db.updateProfile(S.profile.id, { home_tiles: next }));
   },
   logout: async () => {
     // Erinnerungen für dieses Gerät abbestellen – sonst kämen sie nach dem Abmelden weiter

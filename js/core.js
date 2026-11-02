@@ -63,6 +63,7 @@ export const S = {
   findGuessMsg: '',
   findCelebrate: null,
   findReleased: null,
+  openGroups: new Set(),
   pushDevice: null,
   pushBusy: false,
   pushChecking: false,
