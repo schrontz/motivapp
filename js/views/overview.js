@@ -10,7 +10,7 @@ import { alcoholSheet } from './alcohol.js';
 import { findCelebrate } from './finds.js';
 import { homeModules } from './home.js';
 import { usualFor, timeText } from '../remind.js';
-import { weekChanges, changeText, isStrengthHabit } from '../strength.js';
+import { weekChanges, changesShort, isStrengthHabit } from '../strength.js';
 import { groupToday } from '../home.js';
 import { alphaOn, bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
@@ -136,7 +136,7 @@ export function habitRow(S, item, usual = null) {
     <a class="row-main" href="#/habit/${esc(h.id)}">
       <div class="row-title"><span>${esc(h.name)}</span>${pills}</div>
       <div class="row-sub">${usual != null && !item.hit ? `meist gegen ${timeText(usual)} · ` : ''}${esc(sub)}</div>
-      ${!item.hit && (S.weekChanges || []).length && isStrengthHabit(h) ? `<div class="row-up">↑ Diese Woche steigern: ${esc(S.weekChanges.map(changeText).join(' · '))}</div>` : ''}
+      ${!item.hit && (S.weekChanges || []).length && isStrengthHabit(h) ? `<div class="row-up">↑ Diese Woche steigern: ${esc(changesShort(S.weekChanges))}</div>` : ''}
       ${progress}
     </a>
     <button type="button" class="check" data-action="${action}" data-id="${esc(h.id)}" data-state="${item.state}"${btnStyle} aria-label="${esc(aria)}">${btnIcon}</button>

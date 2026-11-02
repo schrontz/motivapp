@@ -494,5 +494,13 @@ export function changeText(c) {
 export function isStrengthHabit(h) {
   const cats = Array.isArray(h.auto_categories) ? h.auto_categories : [];
   if (cats.includes(16) || cats.includes(17)) return true;
-  return !cats.length && /sport|training|kraft|gym|fitness/i.test(h.name || '');
+  // nur am Wortanfang: „Krafttraining“ ja, „Gehirntraining“ nein
+  return !cats.length && /(^|[^a-zäöüß])(sport|training|kraft|gym|fitness)/i.test(h.name || '');
+}
+
+// Kurz für Zeile und Nachricht: die ersten zwei, Rest als Zahl
+export function changesShort(changes, n = 2) {
+  const list = changes.slice(0, n).map(changeText);
+  if (changes.length > n) list.push(`und ${changes.length - n} weitere`);
+  return list.join(', ');
 }

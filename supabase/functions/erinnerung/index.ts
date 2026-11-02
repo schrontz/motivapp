@@ -609,7 +609,12 @@ function changeText(c) {
 function isStrengthHabit(h) {
   const cats = Array.isArray(h.auto_categories) ? h.auto_categories : [];
   if (cats.includes(16) || cats.includes(17)) return true;
-  return !cats.length && /sport|training|kraft|gym|fitness/i.test(h.name || "");
+  return !cats.length && /(^|[^a-zäöüß])(sport|training|kraft|gym|fitness)/i.test(h.name || "");
+}
+function changesShort(changes, n = 2) {
+  const list = changes.slice(0, n).map(changeText);
+  if (changes.length > n) list.push(`und ${changes.length - n} weitere`);
+  return list.join(", ");
 }
 
 var DEFAULT_TIME = 20 * 60;
@@ -690,9 +695,7 @@ var listNames = (names) => {
 };
 function trainingNote(open, changes = []) {
   if (!changes.length || !open.some((o) => isStrengthHabit(o.habit))) return "";
-  const list = changes.slice(0, 2).map(changeText);
-  if (changes.length > 2) list.push(`und ${changes.length - 2} weitere`);
-  return `\u2191 Diese Woche h\xF6her: ${list.join(", ")}`;
+  return `\u2191 Diese Woche h\xF6her: ${changesShort(changes)}`;
 }
 function reminderText(open, changes = []) {
   if (!open.length) return null;

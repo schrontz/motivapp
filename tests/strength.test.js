@@ -248,4 +248,7 @@ test('Was ist diese Woche neu: Steigerung gegenüber letzter Woche, nur solange 
   assert.equal(isStrengthHabit({ name: 'Sport', auto_categories: [16, 17] }), true);
   assert.equal(isStrengthHabit({ name: 'Lesen' }), false);
   assert.equal(isStrengthHabit({ name: 'Training' }), true);
+  assert.equal(isStrengthHabit({ name: 'Gehirntraining' }), false, 'Kopf, nicht Hanteln');
+  assert.equal(isStrengthHabit({ name: 'Krafttraining' }), true);
+  assert.equal(isStrengthHabit({ name: 'Morgen-Sport' }), true);
 });

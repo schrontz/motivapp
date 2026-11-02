@@ -10,7 +10,7 @@
 
 import { todayItems, indexLogs, isPaused, isPeriodic, isHit, logOf } from './stats.js';
 import { eachDay, weekStart, addDays, monthStart, daysInMonth } from './dates.js';
-import { weekChanges, changeText, isStrengthHabit } from './strength.js';
+import { weekChanges, changesShort, isStrengthHabit } from './strength.js';
 import { workoutCounts } from './auto.js';
 
 export { weekChanges }; // auch für die Edge Function (eingebettete Kopie)
@@ -108,9 +108,7 @@ const listNames = (names) => {
 // „↑ Diese Woche höher: …“ – nur, wenn die Sport-Gewohnheit offen ist und ein Plan diese Woche steigt
 export function trainingNote(open, changes = []) {
   if (!changes.length || !open.some((o) => isStrengthHabit(o.habit))) return '';
-  const list = changes.slice(0, 2).map(changeText);
-  if (changes.length > 2) list.push(`und ${changes.length - 2} weitere`);
-  return `↑ Diese Woche höher: ${list.join(', ')}`;
+  return `↑ Diese Woche höher: ${changesShort(changes)}`;
 }
 
 // Text der Nachricht – null, wenn nichts offen ist
