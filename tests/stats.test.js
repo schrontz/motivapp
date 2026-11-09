@@ -181,3 +181,18 @@ test('Heute: Offenes oben, Erledigtes unten, Pausiertes ganz unten – sonst eig
   const list = [it('a', { hit: true }), it('b'), it('c', { paused: true }), it('d', { period: { state: 'goal' } }), it('e'), it('f', { hit: true })];
   assert.deepEqual(sortTodayItems(list).map((i) => i.habit.id), ['b', 'e', 'a', 'd', 'f', 'c']);
 });
+
+test('Lücke bis gestern (krank): seit dem letzten Eintrag, ohne schon pausierte Tage', async () => {
+  const { recentGap } = await import('../js/stats.js');
+  const T = '2026-11-09';
+  const logs = [{ habit_id: 'a', day: '2026-11-03' }, { habit_id: 'b', day: '2026-11-01' }, { habit_id: 'a', day: T }];
+  assert.deepEqual(recentGap(logs, [], null, T), ['2026-11-04', '2026-11-08'], 'alle: seit irgendeinem Eintrag');
+  assert.deepEqual(recentGap(logs, [], 'b', T), ['2026-11-02', '2026-11-08']);
+  // schon teilweise pausiert (für alle) → nur der Rest
+  assert.deepEqual(recentGap(logs, [{ habit_id: null, start_day: '2026-11-04', end_day: '2026-11-06' }], null, T), ['2026-11-07', '2026-11-08']);
+  // ganz pausiert → nichts mehr anbieten
+  assert.equal(recentGap(logs, [{ habit_id: 'a', start_day: '2026-11-04', end_day: '2026-11-08' }], 'a', T), null);
+  // gestern noch eingetragen → keine Lücke
+  assert.equal(recentGap([{ habit_id: 'a', day: '2026-11-08' }], [], 'a', T), null);
+  assert.equal(recentGap([], [], null, T), null);
+});

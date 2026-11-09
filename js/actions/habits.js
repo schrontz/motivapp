@@ -60,6 +60,7 @@ export async function addPauseFor(habitId, start, end) {
 // Schnellwahl im Pausen-Sheet
 function quickRange(key, T) {
   if (key === 'week') return [T, addDays(T, 6)];
+  if (key === 'yesterday') return [addDays(T, -1), addDays(T, -1)];
   if (key === 'weekend') {
     const wd = weekday(T); // 1 = Mo … 7 = So
     const from = wd >= 6 ? T : addDays(T, 6 - wd);
@@ -261,8 +262,8 @@ export const clicks = {
     render();
   },
   'pause-close': () => { S.pauseSheet = null; render(); },
-  'pause-quick': ({ id, T }) => {
-    const [from, to] = quickRange(id, T);
+  'pause-quick': ({ id, T, el }) => {
+    const [from, to] = id === 'range' ? [el.dataset.from, el.dataset.to] : quickRange(id, T);
     S.pauseSheet = { ...S.pauseSheet, from, to };
     render();
   },

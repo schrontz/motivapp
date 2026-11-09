@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeOrder, moveBlock, homeTiles, toggleTile, groupToday, DEFAULT_ORDER } from '../js/home.js';
+import { homeOrder, moveBlock, homeTiles, toggleTile, groupToday, nameHint, DEFAULT_ORDER } from '../js/home.js';
 
 test('Reihenfolge: leer = Standard, Unbekanntes (alte Blöcke) raus, Neues an seinen Platz', () => {
   assert.deepEqual(homeOrder(null), DEFAULT_ORDER);
@@ -38,4 +38,19 @@ test('Heute aufteilen: Jetzt nach Uhrzeit, Später ab 90 Min., Erledigt/Pause un
   const e = groupToday(items, (h) => usual[h.id] ?? null, 1200);
   assert.deepEqual(e.now.map((x) => x.item.habit.id), ['Hautpflege', 'Sport', 'Liegestuetze', 'Duolingo', 'Lesen']);
   assert.equal(e.later.length, 0);
+});
+
+test('Ohne gelernte Zeit: Name verrät die Tageszeit, Automatisches ans Ende von „Jetzt“', () => {
+  assert.equal(nameHint('Skincare Abends'), 1200);
+  assert.equal(nameHint('Skincare morgens'), 420);
+  assert.equal(nameHint('Spaziergang Nachmittag'), 960);
+  assert.equal(nameHint('Lesen'), null);
+  const it = (name, extra = {}) => ({ habit: { id: name, name, ...extra }, hit: false, paused: false, period: null });
+  const items = [it('Schritte', { auto_metric: 'steps' }), it('Skincare Abends'), it('Skincare morgens'), it('Gehirntraining')];
+  const g = groupToday(items, () => null, 10 * 60 + 35); // 10:35 wie auf Jans Bild
+  assert.deepEqual(g.now.map((e) => e.item.habit.id), ['Skincare morgens', 'Gehirntraining', 'Schritte']);
+  assert.deepEqual(g.later.map((e) => e.item.habit.id), ['Skincare Abends']);
+  assert.equal(g.later[0].usual, null, 'Hinweis aus dem Namen wird nicht als „meist gegen“ angezeigt');
+  // abends rutscht es nach „Jetzt“
+  assert.deepEqual(groupToday(items, () => null, 19 * 60).now.map((e) => e.item.habit.id), ['Skincare morgens', 'Skincare Abends', 'Gehirntraining', 'Schritte']);
 });

@@ -1,9 +1,9 @@
 // Gewohnheiten: Liste, Detail mit Kalender/Statistik, Formular.
 
 import { categoryName, CATEGORY_GROUPS, METRICS, workoutCounts, matchesCategories, dedupeWorkouts } from '../auto.js';
-import { monthName, monthShort, WEEKDAYS_SHORT, parseDay } from '../dates.js';
+import { monthName, monthShort, WEEKDAYS_SHORT, parseDay, addDays } from '../dates.js';
 import { svg, habitIcon, HABIT_ICONS, UI_ICONS } from '../icons.js';
-import { habitStats, scheduleText, totalHits } from '../stats.js';
+import { habitStats, scheduleText, totalHits, recentGap } from '../stats.js';
 import { hintCard, sheet } from './overview.js';
 import { colorOf, esc, fmt, nav, notFound, timeOf } from './ui.js';
 import { usualLine, usualOffer } from './remind.js';
@@ -173,12 +173,14 @@ function toKey(d) {
 }
 
 // Aktuelle und geplante Pausen + Knopf. habit = null → „für alle Gewohnheiten“
+// Vorbei, aber frisch (letzte 14 Tage), bleibt sichtbar – nachträglich Eingetragenes soll man prüfen und entfernen können
 export function pauseCard(S, T, habit) {
-  const mine = S.pauses.filter((p) => p.end_day >= T && (habit ? p.habit_id === habit.id : p.habit_id == null))
+  const since = addDays(T, -14);
+  const mine = S.pauses.filter((p) => p.end_day >= since && (habit ? p.habit_id === habit.id : p.habit_id == null))
     .sort((a, b) => (a.start_day < b.start_day ? -1 : 1));
-  const global = habit ? S.pauses.filter((p) => p.end_day >= T && p.habit_id == null) : [];
+  const global = habit ? S.pauses.filter((p) => p.end_day >= since && p.habit_id == null) : [];
   const rows = mine.map((p) => `<div class="cat-row" style="justify-content: space-between">
-      <div><div style="font-size: 15px; font-weight: 600">${pauseRange(p)}</div><div class="small muted">${p.start_day <= T ? 'läuft gerade' : 'geplant'}</div></div>
+      <div><div style="font-size: 15px; font-weight: 600">${pauseRange(p)}</div><div class="small muted">${p.end_day < T ? 'vorbei' : p.start_day <= T ? 'läuft gerade' : 'geplant'}</div></div>
       <button type="button" class="icon-btn" data-action="pause-delete" data-id="${esc(p.id)}" aria-label="Pause ${pauseRange(p)} entfernen" style="border: 0">${svg('M6 6l12 12M18 6L6 18', 18)}</button>
     </div>`).join('');
   const globalNote = global.length ? `<p class="hint">Dazu ${global.length === 1 ? 'eine Pause' : global.length + ' Pausen'} für alle Gewohnheiten: ${global.map(pauseRange).join(', ')}.</p>` : '';
@@ -194,7 +196,11 @@ export function pauseSheet(S, T) {
   const ps = S.pauseSheet;
   const h = ps.habitId ? S.habits.find((x) => x.id === ps.habitId) : null;
   const title = h ? `Pause für ${esc(h.name)}` : 'Pause für alle Gewohnheiten';
-  const quick = [['today', 'Heute'], ['weekend', 'Wochenende'], ['week', 'Nächste 7 Tage']]
+  // Nachträglich zuerst: die Lücke seit dem letzten Eintrag (z. B. krank), dann gestern
+  const gap = recentGap(S.logs, S.pauses, ps.habitId, T);
+  const gapChip = gap && gap[0] !== gap[1]
+    ? `<button type="button" class="chip" data-action="pause-quick" data-id="range" data-from="${gap[0]}" data-to="${gap[1]}">Lücke ${pauseRange({ start_day: gap[0], end_day: gap[1] })}</button>` : '';
+  const quick = gapChip + [['yesterday', 'Gestern'], ['today', 'Heute'], ['weekend', 'Wochenende'], ['week', 'Nächste 7 Tage']]
     .map(([k, l]) => `<button type="button" class="chip" data-action="pause-quick" data-id="${k}">${l}</button>`).join('');
   return `<button type="button" class="scrim" data-action="pause-close" aria-label="Schließen"></button>
   <form class="sheet" data-form="pause" role="dialog" aria-modal="true" aria-label="${title}">

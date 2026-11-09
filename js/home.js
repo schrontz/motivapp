@@ -55,6 +55,20 @@ export function toggleTile(order, visible, tiles, id) {
 
 // Heute aufteilen: Jetzt (offen, ohne Zeit oder bald/überfällig), Später heute (übliche Zeit erst in > 90 Min.),
 // Erledigt (geschafft, Wochenziel erreicht oder Pause). „Jetzt“ nach üblicher Uhrzeit sortiert.
+// Noch nichts gelernt? Dann verrät oft der Name die Tageszeit („Skincare Abends“). Nur zum Einordnen –
+// angezeigt („meist gegen …“) und erinnert wird weiter nur nach gelernter Zeit.
+export function nameHint(name) {
+  const n = String(name || '').toLowerCase();
+  if (/morgen|früh|frueh/.test(n)) return 7 * 60;
+  if (/nachmittag/.test(n)) return 16 * 60;
+  if (/mittag/.test(n)) return 12 * 60 + 30;
+  if (/abend|nacht/.test(n)) return 20 * 60;
+  return null;
+}
+
+// Zählt sich von selbst (Schritte von der Uhr) – braucht kein Antippen, darum in „Jetzt“ ans Ende
+export const countsItself = (h) => !!h.auto_metric;
+
 export const LATER_MIN = 90;
 export function groupToday(items, usualOf, nowMin) {
   const now = [];
@@ -62,11 +76,12 @@ export function groupToday(items, usualOf, nowMin) {
   const done = [];
   items.forEach((item, n) => {
     const usual = usualOf(item.habit);
-    const entry = { item, usual, n };
+    const at = usual ?? nameHint(item.habit.name);
+    const entry = { item, usual, at, auto: countsItself(item.habit), n };
     if (item.hit || (item.period && item.period.state === 'goal') || item.paused) done.push(entry);
-    else if (usual != null && usual > nowMin + LATER_MIN) later.push(entry);
+    else if (at != null && at > nowMin + LATER_MIN) later.push(entry);
     else now.push(entry);
   });
-  const byTime = (a, b) => (a.usual ?? 9999) - (b.usual ?? 9999) || a.n - b.n;
+  const byTime = (a, b) => (a.auto - b.auto) || (a.at ?? 9999) - (b.at ?? 9999) || a.n - b.n;
   return { now: now.sort(byTime), later: later.sort(byTime), done: done.sort((a, b) => a.n - b.n) };
 }

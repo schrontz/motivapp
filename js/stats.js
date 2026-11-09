@@ -213,6 +213,22 @@ export function lastActivityDay(logs) {
   return last;
 }
 
+// Lücke bis gestern seit dem letzten Eintrag (dieser Gewohnheit oder – habitId null – irgendeiner),
+// ohne Tage, die schon pausiert sind. → [von, bis] oder null. Höchstens 30 Tage zurück.
+export function recentGap(logs, pauses, habitId, T) {
+  const yesterday = addDays(T, -1);
+  let last = null;
+  for (const l of logs) if ((habitId == null || l.habit_id === habitId) && l.day < T && (!last || l.day > last)) last = l.day;
+  if (!last) return null;
+  let from = addDays(last, 1);
+  if (diffDays(from, yesterday) > 30) from = addDays(yesterday, -30);
+  let to = yesterday;
+  const covered = (d) => pauses.some((p) => (p.habit_id == null || p.habit_id === habitId) && p.start_day <= d && d <= p.end_day);
+  while (from <= to && covered(from)) from = addDays(from, 1);
+  while (to >= from && covered(to)) to = addDays(to, -1);
+  return from <= to ? [from, to] : null;
+}
+
 export function scheduleText(h) {
   switch (h.schedule) {
     case 'daily': return 'täglich';

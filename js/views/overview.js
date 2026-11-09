@@ -197,7 +197,7 @@ export function overview(S, T) {
     const nextUp = groups.later[0];
     list = `${groups.now.length
       ? `<div class="card list">${rows(groups.now)}</div>`
-      : `<p class="hint" style="padding: 0 4px">${groups.later.length ? `Gerade nichts – als Nächstes ${esc(nextUp.item.habit.name)} (meist gegen ${timeText(nextUp.usual)}).` : 'Alles geschafft für heute. 🎉'}</p>`}
+      : `<p class="hint" style="padding: 0 4px">${groups.later.length ? `Gerade nichts – als Nächstes ${esc(nextUp.item.habit.name)}${nextUp.usual != null ? ` (meist gegen ${timeText(nextUp.usual)})` : ''}.` : 'Alles geschafft für heute. 🎉'}</p>`}
       ${folded('later', 'Später heute', groups.later)}
       ${folded('done', groups.done.some((e) => e.item.paused && !e.item.hit) ? 'Erledigt & Pause' : 'Erledigt', groups.done)}`;
   }
