@@ -143,6 +143,7 @@ h1, h2, h3, p { margin: 0; }
 .hint-card p { font-size: 14px; line-height: 1.45; }
 .hint-card .btn { height: 44px; font-size: 14px; }
 .pill.auto { background: var(--k-purple); color: var(--c-purple); }
+.pill.thought { background: var(--k-orange); color: var(--c-orange); }
 :root { --z0: #9FD3C7; --z1: #4FB39E; --z2: #E9A46A; --z3: #C2620F; }
 a.tile { text-decoration: none; color: inherit; display: block; }
 a.tile:active { transform: scale(0.98); }
@@ -626,3 +627,9 @@ button.dest-row:first-child { border-top: 0; }
 .btn.small { width: auto; height: 40px; padding: 0 16px; border-radius: 20px; font-size: 15px; }
 .remind-page .card.list > .remind-own { padding-left: 32px; min-height: 56px; border-top: 0; margin-top: -8px; }
 .link-inline { color: var(--c-blue); }
+/* Formular: „Automatisch“ als aufklappbare Zeile */
+details.fold > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; font-size: 15px; min-height: 24px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold .fold-arrow { transition: transform 0.15s; }
+details.fold[open] .fold-arrow { transform: rotate(90deg); }
+details.fold .fold-body { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }

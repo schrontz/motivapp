@@ -88,6 +88,7 @@ window.addEventListener('hashchange', (e) => {
   S.plantInfo = null;
   if (route().name !== 'essen-neu') food.leaveDraft();
   S.form = null;
+  S.autoOpen = false;
   const r = route();
   imports.resetImportsExcept(r.name);
   if (r.name === 'import' && r.id === 'shared') imports.consumeShared();

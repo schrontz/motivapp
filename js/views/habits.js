@@ -44,7 +44,7 @@ export function detail(S, T, id) {
         <div class="card stat"><div class="small muted">Letzte 30 Tage</div><div class="num">${st.last30}</div><div class="small muted">Mal geschafft</div></div>
         <div class="card stat"><div class="small muted">Bester Monat</div>${best}</div>
       </section>
-      ${st.hint ? hintCard(h, st.hint, false) : ''}
+      ${st.hint && !(S.hintSeen && S.hintSeen(h.id, st.hint.count)) ? hintCard(h, st.hint) : ''}
       ${st.periods ? periodsCard(h, st.periods, col) : ''}
       <section class="card pad">
         <div class="section-head" style="margin: 0 0 12px"><h2 style="font-size: 17px">${monthName(T)}</h2><span class="small muted">${quota}</span></div>
@@ -302,7 +302,6 @@ export function habitForm(S, T, id) {
 
       ${S.hasWithingsSchema ? autoSection(S, h, f, kind) : ''}
 
-      <p class="hint" style="padding: 0 4px">Steigerung und Erinnerungen kommen in einer der nächsten Versionen.</p>
       <p id="form-error" class="small" style="color: var(--danger); padding: 0 4px" role="alert"></p>
       <button type="submit" class="btn">${editing ? 'Speichern' : 'Gewohnheit anlegen'}</button>
       ${editing ? '<button type="button" class="btn danger" data-action="archive" data-id="' + esc(editing.id) + '">Gewohnheit entfernen</button><p class="hint" style="text-align: center">Bisherige Einträge bleiben in deiner Gesamtzahl erhalten.</p>' : ''}
@@ -315,16 +314,14 @@ export function autoSection(S, h, f, kind) {
   const note = connected ? '' : '<p class="hint">Funktioniert, sobald Withings im Profil verbunden ist.</p>';
   if (kind === 'count') {
     const cur = f.auto_metric ?? h.auto_metric ?? '';
-    return `<section class="card pad" style="display: flex; flex-direction: column; gap: 10px">
-      <h2 style="font-size: 15px">Wert von Withings übernehmen</h2>
+    return fold(S, cur ? `von Withings: ${METRICS[cur] ? METRICS[cur].label : cur}` : 'aus', `
       <div class="field"><label for="f-metric">Woher kommt die Zahl?</label>
         <select id="f-metric" class="input" name="auto_metric">
           <option value="">Ich trage selbst ein</option>
           ${Object.entries(METRICS).map(([k, m]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${m.label}${m.unit !== m.label ? ' (' + m.unit + ')' : ''}</option>`).join('')}
         </select></div>
       <p class="hint">Die Zahl füllt sich dann von selbst. Trägst du selbst etwas ein, hat deine Zahl Vorrang.</p>
-      ${note}
-    </section>`;
+      ${note}`);
   }
   const on = f.auto_on ?? !!(h.auto_categories && h.auto_categories.length);
   const cats = h.auto_categories || [16, 17];
@@ -332,7 +329,9 @@ export function autoSection(S, h, f, kind) {
   const found = new Map();
   for (const w of S.workouts) found.set(w.category, (found.get(w.category) || 0) + 1);
   const foundText = [...found.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c, n]) => `${categoryName(c)} ${n}×`).join(', ');
-  return `<section class="card pad" style="display: flex; flex-direction: column; gap: 12px">
+  const min = f.auto_min ?? h.auto_min_minutes ?? 20;
+  const groupNames = CATEGORY_GROUPS.filter((g) => groups.includes(g.id)).map((g) => g.label).join(', ');
+  return fold(S, on ? `${groupNames || 'Training'} ab ${min} Min` : 'aus', `
     <label class="switch-row">
       <span><span style="display: block; font-size: 15px; font-weight: 700">Automatisch abhaken</span><span class="hint">wenn Withings ein passendes Training erkennt</span></span>
       <input type="checkbox" class="sw-input" name="auto_on" data-action="form-change"${on ? ' checked' : ''}>
@@ -345,10 +344,18 @@ export function autoSection(S, h, f, kind) {
       </div>
       <div class="switch-row" style="cursor: default">
         <label for="f-automin" style="font-size: 15px; font-weight: 500">Mindestens</label>
-        <span style="display: flex; align-items: center; gap: 8px"><input id="f-automin" class="input" name="auto_min" type="number" inputmode="numeric" min="0" value="${esc(f.auto_min ?? h.auto_min_minutes ?? 20)}" style="width: 80px; text-align: center">Minuten</span>
+        <span style="display: flex; align-items: center; gap: 8px"><input id="f-automin" class="input" name="auto_min" type="number" inputmode="numeric" min="0" value="${esc(min)}" style="width: 80px; text-align: center">Minuten</span>
       </div>
       ${foundText ? `<p class="hint">In deinen Withings-Daten: ${esc(foundText)}</p>` : ''}
       <p class="hint">Einen automatischen Haken kannst du jederzeit zurücknehmen – er kommt dann nicht wieder.</p>` : ''}
-    ${note}
-  </section>`;
+    ${note}`);
+}
+
+// „Automatisch“ als eine aufklappbare Zeile – die meisten Gewohnheiten brauchen es nicht.
+// Felder bleiben im Formular (auch zugeklappt), der Zustand übersteht das Neuzeichnen.
+function fold(S, state, body) {
+  return `<details class="card pad fold"${S.autoOpen ? ' open' : ''}>
+    <summary data-action="auto-fold"><span><b>Automatisch</b> <span class="muted">· ${esc(state)}</span></span><span class="muted fold-arrow" aria-hidden="true">›</span></summary>
+    <div class="fold-body">${body}</div>
+  </details>`;
 }

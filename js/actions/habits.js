@@ -272,6 +272,8 @@ export const clicks = {
     render();
     await persist(() => db.deletePause(id));
   },
+  // <details> klappt selbst – hier nur merken, damit es nach dem Neuzeichnen so bleibt
+  'auto-fold': ({ el }) => { S.autoOpen = !el.parentElement.open; },
   'hint-ok': ({ id, el }) => {
     local.set('hint.' + id, el.dataset.count);
     render();

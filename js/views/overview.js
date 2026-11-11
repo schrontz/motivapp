@@ -108,7 +108,8 @@ export function habitRow(S, item, usual = null) {
     item.state === 'mini' ? '<span class="pill">Mini</span>' : '',
     p && p.state === 'mini' ? `<span class="pill">${miniPeriodName(h)}</span>` : '',
     p && p.state === 'goal' ? '<span class="pill goal">Ziel</span>' : '',
-    (item.paused && !item.hit) ? '<span class="pill pause">Pause</span>' : ''
+    (item.paused && !item.hit) ? '<span class="pill pause">Pause</span>' : '',
+    item.thought ? '<span class="pill thought" title="Ein Gedanke zu dieser Gewohnheit – tippen zum Ansehen">💭 Gedanke</span>' : ''
   ].join('');
   let progress = '';
   if (h.kind === 'count' && h.target) {
@@ -162,10 +163,12 @@ export function overview(S, T) {
       </div>`
     : '';
 
-  // Freundliche Hinweise bei Mustern (z. B. 4 Mini-Wochen am Stück) – wegklickbar
-  const hints = shown.map((h) => ({ h, hint: patternHint(h, S.idx, S.pauses, T) }))
-    .filter((x) => x.hint && !(S.hintSeen && S.hintSeen(x.h.id, x.hint.count)))
-    .map(({ h, hint }) => hintCard(h, hint)).join('');
+  // Freundliche Hinweise bei Mustern (z. B. 4 Mini-Wochen am Stück) stehen bei der Gewohnheit selbst;
+  // hier nur ein kleines „Gedanke“-Etikett an der Zeile, das dorthin führt
+  for (const it of items) {
+    const hint = patternHint(it.habit, S.idx, S.pauses, T);
+    it.thought = !!(hint && !(S.hintSeen && S.hintSeen(it.habit.id, hint.count)));
+  }
 
   const allPaused = S.pauses.some((p) => p.habit_id == null && p.start_day <= T && T <= p.end_day);
   // „Jetzt“: was du üblicherweise um diese Zeit machst; Späteres und Erledigtes zugeklappt
@@ -219,7 +222,6 @@ export function overview(S, T) {
       <div class="section-head"><h2>Jetzt</h2>${items.length ? `<span class="small muted">${nowTitle}</span>` : ''}</div>
       ${allPaused ? '<section class="hint-card"><div style="font-size: 15px; font-weight: 700">Heute ist Pause</div><p>Nichts muss, nichts zählt gegen dich. Genieß den Tag – wenn du doch etwas machst, darfst du es natürlich abhaken.</p></section>' : ''}
       ${list}
-      ${hints}
       ${mods.lines}
       ${tilesSection(S, T)}
     </div>
