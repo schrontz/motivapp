@@ -464,7 +464,8 @@ export function sessionTarget(plan, history, entry, T) {
 // ───────────── Was ist diese Woche neu? ─────────────
 // Für den Hinweis „↑ diese Woche steigern“ (Übersicht und Erinnerung):
 // Übungen, deren Ziel in dieser Woche höher ist als letzte Woche – und die diese Woche noch nicht geschafft sind.
-export function weekChanges(plans, sessions, T) {
+// Alle Ziele dieser Woche, die noch offen sind; „from“ nur, wenn es gegenüber letzter Woche höher ist
+export function weekPlan(plans, sessions, T) {
   const now = weekStart(T);
   const prevWeek = addDays(now, -7);
   const out = [];
@@ -472,12 +473,32 @@ export function weekChanges(plans, sessions, T) {
     const hist = exerciseHistory(sessions || [], exerciseKey({ name: plan.exercise, equipment: plan.equipment }));
     const res = progress(plan, hist, T);
     const cur = res.weeks.get(now);
+    if (!cur || cur.result === 'done') continue;
     const prev = res.weeks.get(prevWeek);
-    if (!cur || !prev || cur.result === 'done') continue;
-    if (cur.reps === prev.reps && cur.kg === prev.kg) continue; // festigen oder Stufe wiederholen: nichts Neues
-    out.push({ name: plan.exercise, mode: res.mode, sets: cur.sets, reps: cur.reps, kg: cur.kg, from: { reps: prev.reps, kg: prev.kg } });
+    const up = prev && (cur.reps !== prev.reps || cur.kg !== prev.kg);
+    out.push({ name: plan.exercise, mode: res.mode, sets: cur.sets, reps: cur.reps, kg: cur.kg, from: up ? { reps: prev.reps, kg: prev.kg } : null });
   }
   return out;
+}
+
+// Nur was diese Woche höher ist (festigen oder Stufe wiederholen: nichts Neues)
+export function weekChanges(plans, sessions, T) {
+  return weekPlan(plans, sessions, T).filter((c) => c.from);
+}
+
+// „Curls 3 × 20“ / „Kniebeuge 3 × 10 mit 60 kg“ / „Plank 3 × 45 s“
+export function planText(c) {
+  if (c.mode === 'sec') return `${c.name} ${c.sets} × ${c.reps} s`;
+  if (c.mode === 'kg' && c.kg) return `${c.name} ${c.sets} × ${c.reps} mit ${kgTxt(c.kg)}`;
+  return `${c.name} ${c.sets} × ${c.reps}`;
+}
+
+// Zeile an der Sport-Gewohnheit: Steigerung, sonst der Plan wie letzte Woche (nie eine Begründung)
+export function planLine(plan) {
+  const up = plan.filter((c) => c.from);
+  if (up.length) return `↑ Diese Woche steigern: ${changesShort(up)}`;
+  if (!plan.length) return '';
+  return `Diese Woche wie letzte: ${shortList(plan, planText)}`;
 }
 
 const kgTxt = (n) => `${String(n).replace('.', ',')} kg`;
@@ -500,7 +521,9 @@ export function isStrengthHabit(h) {
 
 // Kurz für Zeile und Nachricht: die ersten zwei, Rest als Zahl
 export function changesShort(changes, n = 2) {
-  const list = changes.slice(0, n).map(changeText);
-  if (changes.length > n) list.push(`und ${changes.length - n} weitere`);
-  return list.join(', ');
+  return shortList(changes, changeText, n);
+}
+function shortList(items, text, n = 2) {
+  const list = items.slice(0, n).map(text).join(', ');
+  return items.length > n ? `${list} und ${items.length - n} weitere` : list;
 }

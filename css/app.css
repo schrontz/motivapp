@@ -601,6 +601,7 @@ button.dest-row:first-child { border-top: 0; }
 .find-guess .btn { width: auto; padding: 0 20px; height: 48px; flex: none; }
 .chip.done { opacity: .6; }
 .row-up { font-size: 13px; font-weight: 600; color: var(--c-teal); margin-top: 3px; line-height: 1.35; }
+.row-up.same { color: var(--muted); font-weight: 500; }
 /* Übersicht neu: Ring kompakt, Kacheln, Zeilen, zugeklappte Gruppen */
 .rings.compact { padding: 12px 16px; gap: 16px; }
 .rings.compact .legend { gap: 2px; }

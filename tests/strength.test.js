@@ -252,3 +252,20 @@ test('Was ist diese Woche neu: Steigerung gegenüber letzter Woche, nur solange 
   assert.equal(isStrengthHabit({ name: 'Krafttraining' }), true);
   assert.equal(isStrengthHabit({ name: 'Morgen-Sport' }), true);
 });
+
+test('Zeile am Sport: Steigerung, sonst „wie letzte Woche“ (z. B. nach einer kranken Woche)', async () => {
+  const { weekPlan, planLine } = await import('../js/strength.js');
+  const mk = (exercise) => ({ exercise, equipment: 'Kurzhantel', sets: 3, start_reps: 20, kg: 10, plus_reps: 2, every_weeks: 1, max_reps: 30, kg_step: 2, started_on: '2026-10-19', created_at: '2026-10-19T08:00:00Z' });
+  const names = ['Curls', 'Fliegende', 'Frontheben'];
+  const plans = names.map(mk);
+  const sess = (day, reps) => ({ day, started_at: `${day}T07:00:00Z`, exercises: names.map((name) => ({ name, equipment: 'Kurzhantel', kind: 'kg_reps', sets: [1, 2, 3].map(() => ({ kg: 10, reps })) })) });
+  // 19.10.: 20 ✓, 26.10.: 22 ✓, 2.11.: krank (nichts) → 9.11. wie 2.11.: 24
+  const sick = [sess('2026-10-21', 20), sess('2026-10-28', 22)];
+  const p = weekPlan(plans, sick, '2026-11-13');
+  assert.equal(p.length, 3);
+  assert.equal(planLine(p), 'Diese Woche wie letzte: Curls 3 × 24 mit 10 kg, Fliegende 3 × 24 mit 10 kg und 1 weitere');
+  // normal weitertrainiert → Steigerung wie bisher
+  assert.match(planLine(weekPlan(plans, [...sick, sess('2026-11-04', 24)], '2026-11-13')), /^↑ Diese Woche steigern: Curls 3 × 26 \(statt 24\)/);
+  // diese Woche alles geschafft → keine Zeile
+  assert.equal(planLine(weekPlan(plans, [...sick, sess('2026-11-11', 24)], '2026-11-13')), '');
+});

@@ -10,7 +10,7 @@ import { alcoholSheet } from './alcohol.js';
 import { findCelebrate } from './finds.js';
 import { homeModules } from './home.js';
 import { usualFor, timeText } from '../remind.js';
-import { weekChanges, changesShort, isStrengthHabit } from '../strength.js';
+import { weekPlan, planLine, isStrengthHabit } from '../strength.js';
 import { groupToday } from '../home.js';
 import { alphaOn, bodyOn, colorOf, dayShift, esc, fmt, hm, nav, numTxt, timeOf, trainings } from './ui.js';
 
@@ -137,7 +137,7 @@ export function habitRow(S, item, usual = null) {
     <a class="row-main" href="#/habit/${esc(h.id)}">
       <div class="row-title"><span>${esc(h.name)}</span>${pills}</div>
       <div class="row-sub">${usual != null && !item.hit ? `meist gegen ${timeText(usual)} · ` : ''}${esc(sub)}</div>
-      ${!item.hit && (S.weekChanges || []).length && isStrengthHabit(h) ? `<div class="row-up">↑ Diese Woche steigern: ${esc(changesShort(S.weekChanges))}</div>` : ''}
+      ${!item.hit && S.planLine && isStrengthHabit(h) ? `<div class="row-up${S.planLine.startsWith('↑') ? '' : ' same'}">${esc(S.planLine)}</div>` : ''}
       ${progress}
     </a>
     <button type="button" class="check" data-action="${action}" data-id="${esc(h.id)}" data-state="${item.state}"${btnStyle} aria-label="${esc(aria)}">${btnIcon}</button>
@@ -153,7 +153,7 @@ export function overview(S, T) {
   const shown = cat === 'all' ? active : active.filter((h) => h.category_id === cat);
   const items = todayItems(shown, S.idx, S.pauses, T);
   // Steigerungspläne: was ist diese Woche höher als letzte? (für die Sport-Gewohnheit)
-  S.weekChanges = alphaOn(S) ? weekChanges(S.plans || [], S.strength || [], T) : [];
+  S.planLine = alphaOn(S) ? planLine(weekPlan(S.plans || [], S.strength || [], T)) : '';
   const name = S.profile && S.profile.display_name ? `, ${esc(S.profile.display_name)}` : '';
 
   const chips = usedCats.length

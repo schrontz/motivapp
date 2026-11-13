@@ -584,7 +584,7 @@ function ladder(p, reps, streak, kg) {
   }
   return items;
 }
-function weekChanges(plans, sessions, T) {
+function weekPlan(plans, sessions, T) {
   const now = weekStart(T);
   const prevWeek = addDays(now, -7);
   const out = [];
@@ -592,12 +592,15 @@ function weekChanges(plans, sessions, T) {
     const hist = exerciseHistory(sessions || [], exerciseKey({ name: plan.exercise, equipment: plan.equipment }));
     const res = progress(plan, hist, T);
     const cur = res.weeks.get(now);
+    if (!cur || cur.result === "done") continue;
     const prev = res.weeks.get(prevWeek);
-    if (!cur || !prev || cur.result === "done") continue;
-    if (cur.reps === prev.reps && cur.kg === prev.kg) continue;
-    out.push({ name: plan.exercise, mode: res.mode, sets: cur.sets, reps: cur.reps, kg: cur.kg, from: { reps: prev.reps, kg: prev.kg } });
+    const up = prev && (cur.reps !== prev.reps || cur.kg !== prev.kg);
+    out.push({ name: plan.exercise, mode: res.mode, sets: cur.sets, reps: cur.reps, kg: cur.kg, from: up ? { reps: prev.reps, kg: prev.kg } : null });
   }
   return out;
+}
+function weekChanges(plans, sessions, T) {
+  return weekPlan(plans, sessions, T).filter((c) => c.from);
 }
 var kgTxt = (n) => `${String(n).replace(".", ",")} kg`;
 function changeText(c) {
@@ -612,9 +615,11 @@ function isStrengthHabit(h) {
   return !cats.length && /(^|[^a-zäöüß])(sport|training|kraft|gym|fitness)/i.test(h.name || "");
 }
 function changesShort(changes, n = 2) {
-  const list = changes.slice(0, n).map(changeText);
-  if (changes.length > n) list.push(`und ${changes.length - n} weitere`);
-  return list.join(", ");
+  return shortList(changes, changeText, n);
+}
+function shortList(items, text, n = 2) {
+  const list = items.slice(0, n).map(text).join(", ");
+  return items.length > n ? `${list} und ${items.length - n} weitere` : list;
 }
 
 var DEFAULT_TIME = 20 * 60;

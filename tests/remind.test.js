@@ -121,7 +121,7 @@ test('Steigerung in der Erinnerung: nur wenn Sport offen ist', async () => {
   assert.equal(reminderText([lesen, sport], ch).body, 'Lesen, Sport. ↑ Diese Woche höher: Bankdrücken 3 × 24 (statt 22).');
   assert.equal(reminderText([lesen], ch).body, 'Lesen.', 'Sport schon erledigt → kein Hinweis');
   const many = [1, 2, 3, 4].map((i) => ({ ...ch[0], name: 'Übung ' + i }));
-  assert.match(reminderText([sport], many).body, /Übung 1 3 × 24 \(statt 22\), Übung 2 3 × 24 \(statt 22\), und 2 weitere\.$/);
+  assert.match(reminderText([sport], many).body, /Übung 1 3 × 24 \(statt 22\), Übung 2 3 × 24 \(statt 22\) und 2 weitere\.$/);
 });
 
 test('Eigene Erinnerung zur üblichen Zeit: Fenster, einmal am Tag, Woche nur am „eigenen“ Wochentag oder wenn knapp', () => {
